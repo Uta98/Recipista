@@ -119,7 +119,7 @@ h1 {
 }
 
 h2 {
-  font-size: 16px;
+  font-size: 18px;
   line-height: 1.25;
 }
 
@@ -721,6 +721,11 @@ button:disabled {
   font-weight: 900;
   line-height: 1;
   padding: 0;
+  transition: transform 0.18s ease;
+}
+
+.toggle-button.open {
+  transform: rotate(90deg);
 }
 
 .saved-recipe-selector {
@@ -1053,7 +1058,7 @@ button:disabled {
   gap: 8px;
   margin: 10px 0 0;
   color: var(--accent-dark);
-  font-size: 15px;
+  font-size: 16px;
   font-weight: 800;
 }
 
@@ -1068,7 +1073,7 @@ button:disabled {
   padding-top: 12px;
   border-top: 1px solid var(--line);
   color: var(--muted);
-  font-size: 12px;
+  font-size: 13px;
   font-weight: 800;
 }
 
@@ -1132,6 +1137,7 @@ button:disabled {
 
 .item-name {
   min-width: 0;
+  font-size: 13px;
   font-weight: 700;
   word-break: break-word;
   overflow-wrap: anywhere;

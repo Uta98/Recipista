@@ -17,7 +17,7 @@
             <img src="icons/app-icon.png" alt="">
           </button>
           <button id="open-manual" class="icon-button subtle" type="button" title="手入力でレシピを追加" aria-label="手入力でレシピを追加">+</button>
-          <button id="open-settings" class="icon-button subtle" type="button" title="設定" aria-label="設定" hidden>⚙︎</button>
+          <button id="open-settings" class="icon-button subtle" type="button" title="設定" aria-label="設定">⚙︎</button>
         </div>
       </header>
 
@@ -70,11 +70,11 @@
       </section>
 
       <section id="shopping-panel" class="panel active">
-        <section class="saved-recipe-selector" aria-label="保存レシピ">
+        <section class="saved-recipe-selector" aria-label="保存レシピ" hidden>
           <div class="selector-header">
             <div>
               <p class="section-label">保存レシピ</p>
-              <h2>使うレシピを選ぶ</h2>
+              <h2>保存レシピ</h2>
             </div>
             <div class="panel-actions">
               <button id="clear-recipes" class="text-button danger-text" type="button">すべて削除</button>
@@ -88,10 +88,9 @@
           <p id="recipe-empty" class="empty compact-empty">まだ保存されたレシピはありません。</p>
         </section>
 
-        <div class="panel-header">
+        <div class="panel-header" hidden>
           <div>
-            <p class="section-label">選択中レシピの材料</p>
-            <h2 id="shopping-title">合算リスト</h2>
+            <h2 id="shopping-title">買い物リスト</h2>
           </div>
           <div class="panel-actions">
             <button id="share-notes" class="icon-button share-button" type="button" title="メモへToDo共有" aria-label="メモへToDo共有">
@@ -105,8 +104,8 @@
             <button id="clear-done" class="text-button" type="button">すべてチェック解除</button>
           </div>
         </div>
-        <ul id="shopping-list" class="shopping-list"></ul>
-        <p id="shopping-empty" class="empty">保存済みレシピにチェックを入れると材料がまとまります。</p>
+        <ul id="shopping-list" class="shopping-list" hidden></ul>
+        <p id="shopping-empty" class="empty" hidden>保存済みレシピにチェックを入れると材料がまとまります。</p>
         <section id="manual-entry" class="manual-entry" hidden>
           <div class="manual-card">
             <div class="sheet-header">

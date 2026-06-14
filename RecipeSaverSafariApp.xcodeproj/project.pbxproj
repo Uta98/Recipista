@@ -23,6 +23,7 @@
 		010000000000000000000014 /* WatchShoppingListView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 020000000000000000000017 /* WatchShoppingListView.swift */; };
 		010000000000000000000015 /* AdMobBootstrap.swift in Sources */ = {isa = PBXBuildFile; fileRef = 020000000000000000000020 /* AdMobBootstrap.swift */; };
 		010000000000000000000016 /* GoogleMobileAds in Frameworks */ = {isa = PBXBuildFile; productRef = 0E0000000000000000000001 /* GoogleMobileAds */; };
+		010000000000000000000017 /* AdMobViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = 020000000000000000000021 /* AdMobViews.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -70,6 +71,7 @@
 		020000000000000000000018 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		020000000000000000000019 /* RecipistaWatch.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = RecipistaWatch.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		020000000000000000000020 /* AdMobBootstrap.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AdMobBootstrap.swift; sourceTree = "<group>"; };
+		020000000000000000000021 /* AdMobViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AdMobViews.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -114,6 +116,7 @@
 				020000000000000000000001 /* RecipistaApp.swift */,
 				020000000000000000000002 /* ContentView.swift */,
 				020000000000000000000020 /* AdMobBootstrap.swift */,
+				020000000000000000000021 /* AdMobViews.swift */,
 				020000000000000000000003 /* Assets.xcassets */,
 				020000000000000000000013 /* Info.plist */,
 			);
@@ -300,6 +303,7 @@
 				010000000000000000000001 /* RecipistaApp.swift in Sources */,
 				010000000000000000000002 /* ContentView.swift in Sources */,
 				010000000000000000000015 /* AdMobBootstrap.swift in Sources */,
+				010000000000000000000017 /* AdMobViews.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

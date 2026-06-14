@@ -389,6 +389,16 @@ private final class RecipistaStore: ObservableObject {
         save()
     }
 
+    func deleteShoppingItem(key: String) {
+        for recipeIndex in recipes.indices where selectedRecipeIds.contains(recipes[recipeIndex].id) {
+            recipes[recipeIndex].ingredients.removeAll { ingredient in
+                Self.parseIngredient(ingredient.line, quantityTerms: quantityTerms).key == key
+            }
+        }
+        shoppingDone.removeValue(forKey: key)
+        save()
+    }
+
     func moveShoppingItem(key: String, to category: String) {
         guard categories.contains(category) else { return }
         for recipeIndex in recipes.indices where selectedRecipeIds.contains(recipes[recipeIndex].id) {
@@ -791,12 +801,9 @@ struct ContentView: View {
             }
         }
         .onAppear {
-            showsStartupAd = true
-        }
-        .fullScreenCover(isPresented: $showsStartupAd) {
-            StartupAdView(adUnitID: AdConfiguration.appStartupAdUnitID) {
-                showsStartupAd = false
-            }
+            #if canImport(GoogleMobileAds)
+            AppOpenAdManager.shared.loadAndPresent(adUnitID: AdConfiguration.appStartupAdUnitID)
+            #endif
         }
     }
 
@@ -836,7 +843,7 @@ struct ContentView: View {
             HStack(alignment: .center, spacing: 8) {
                 VStack(alignment: .leading, spacing: 2) {
                     Text("買い物リスト")
-                        .font(.subheadline.weight(.bold))
+                        .font(.title3.weight(.bold))
                         .foregroundStyle(Color.recipistaGreen)
                 }
                 Spacer()
@@ -936,7 +943,7 @@ struct ContentView: View {
     private var settingsView: some View {
         Form {
             Section {
-                Picker("分量表示", selection: Binding(
+                Picker("数量単位表示", selection: Binding(
                     get: { store.unitDisplay },
                     set: { store.updateUnitDisplay($0) }
                 )) {
@@ -945,9 +952,9 @@ struct ContentView: View {
                 }
                 .pickerStyle(.segmented)
             } header: {
-                Text("表示")
+                Text("数量単位表示")
             } footer: {
-                Text("調味料の大さじ/小さじを見慣れた単位で表示します。")
+                Text("大さじ/小さじで見るか、mlに換算して見るかを選べます。")
             }
 
             Section {
@@ -955,7 +962,7 @@ struct ContentView: View {
                     CategorySettingsView(store: store)
                 } label: {
                     HStack {
-                        Text("カテゴリー")
+                        Text("材料カテゴリー")
                         Spacer()
                         Text("\(store.availableCategories.count)件")
                             .foregroundStyle(.secondary)
@@ -965,7 +972,7 @@ struct ContentView: View {
                     CategoryOverrideSettingsView(store: store)
                 } label: {
                     HStack {
-                        Text("材料カテゴリ")
+                        Text("材料分類先")
                         Spacer()
                         Text("\(store.categoryOverrides.count)件")
                             .foregroundStyle(.secondary)
@@ -982,7 +989,7 @@ struct ContentView: View {
                     }
                 }
             } header: {
-                Text("分類と数量")
+                Text("ユーザー設定")
             } footer: {
                 Text("カテゴリや数量単位は、使い方に合わせて追加できます。")
             }
@@ -994,8 +1001,8 @@ struct ContentView: View {
         VStack(alignment: .leading, spacing: 10) {
             HStack(alignment: .top) {
                 VStack(alignment: .leading, spacing: 2) {
-                    Text("買い物対象レシピ")
-                        .font(.subheadline.weight(.bold))
+                    Text("保存レシピ")
+                        .font(.title3.weight(.bold))
                         .foregroundStyle(Color.recipistaGreen)
                 }
                 Spacer()
@@ -1004,9 +1011,11 @@ struct ContentView: View {
                         store.recipesExpanded.toggle()
                     }
                 } label: {
-                    Image(systemName: store.recipesExpanded ? "chevron.down" : "chevron.right")
+                    Image(systemName: "chevron.right")
                         .font(.headline.weight(.bold))
                         .frame(width: 30, height: 30)
+                        .rotationEffect(.degrees(store.recipesExpanded ? 90 : 0))
+                        .animation(.snappy, value: store.recipesExpanded)
                 }
                 .buttonStyle(.plain)
                 .foregroundStyle(Color.recipistaGreen)
@@ -1065,7 +1074,7 @@ struct ContentView: View {
             if !categoryItems.isEmpty {
                 HStack {
                     Text(category)
-                        .font(.subheadline.weight(.bold))
+                        .font(.headline.weight(.bold))
                         .foregroundStyle(Color.recipistaGreen)
                     Spacer()
                     if category == "調味料" && categoryItems.contains(where: { store.shoppingDone[$0.key] != true }) {
@@ -1095,7 +1104,11 @@ struct ContentView: View {
 
                 ForEach(categoryItems) { item in
                     if isEditingShoppingList {
-                        AppShoppingEditRow(item: store.editingItem(for: item), categories: store.availableCategories) { updated in
+                        AppShoppingEditRow(
+                            item: store.editingItem(for: item),
+                            categories: store.availableCategories,
+                            onDelete: { store.deleteShoppingItem(key: item.key) }
+                        ) { updated in
                             store.updateShoppingItem(updated)
                         }
                     } else {
@@ -1181,20 +1194,10 @@ struct ContentView: View {
 private struct CategorySettingsView: View {
     @ObservedObject var store: RecipistaStore
     @State private var categoryName = ""
+    @State private var showingAdd = false
 
     var body: some View {
         Form {
-            Section {
-                HStack {
-                    TextField("カテゴリー", text: $categoryName)
-                    Button("追加") {
-                        store.addCategory(categoryName)
-                        categoryName = ""
-                    }
-                    .disabled(categoryName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
-                }
-            }
-
             Section("登録済み") {
                 ForEach(store.availableCategories, id: \.self) { category in
                     HStack {
@@ -1216,8 +1219,45 @@ private struct CategorySettingsView: View {
                 }
             }
         }
-        .navigationTitle("カテゴリー")
+        .navigationTitle("材料カテゴリー")
         .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            ToolbarItem(placement: .topBarTrailing) {
+                Button {
+                    showingAdd = true
+                } label: {
+                    Image(systemName: "plus")
+                }
+            }
+        }
+        .sheet(isPresented: $showingAdd) {
+            NavigationStack {
+                Form {
+                    Section("新しいカテゴリー") {
+                        TextField("例: 乾物", text: $categoryName)
+                    }
+                }
+                .navigationTitle("追加")
+                .navigationBarTitleDisplayMode(.inline)
+                .toolbar {
+                    ToolbarItem(placement: .cancellationAction) {
+                        Button("キャンセル") {
+                            categoryName = ""
+                            showingAdd = false
+                        }
+                    }
+                    ToolbarItem(placement: .confirmationAction) {
+                        Button("追加") {
+                            store.addCategory(categoryName)
+                            categoryName = ""
+                            showingAdd = false
+                        }
+                        .disabled(categoryName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                    }
+                }
+            }
+            .presentationDetents([.medium])
+        }
         .scrollContentBackground(.hidden)
         .background(Color.recipistaBackground.ignoresSafeArea())
     }
@@ -1227,31 +1267,10 @@ private struct CategoryOverrideSettingsView: View {
     @ObservedObject var store: RecipistaStore
     @State private var ingredientName = ""
     @State private var category = "その他"
+    @State private var showingAdd = false
 
     var body: some View {
         Form {
-            Section {
-                LabeledContent("材料名") {
-                    TextField("例: 水", text: $ingredientName)
-                        .multilineTextAlignment(.trailing)
-                }
-                Picker("カテゴリ", selection: $category) {
-                    ForEach(store.availableCategories, id: \.self) { category in
-                        Text(category).tag(category)
-                    }
-                }
-                HStack {
-                    Spacer()
-                    Button("追加") {
-                        store.updateCategoryOverride(name: ingredientName, category: category)
-                        ingredientName = ""
-                    }
-                    .disabled(ingredientName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
-                }
-            } footer: {
-                Text("ここに登録した材料は、登録先カテゴリで優先して表示されます。")
-            }
-
             Section("登録済み") {
                 if store.categoryOverrides.isEmpty {
                     Text("まだ登録がありません。")
@@ -1273,8 +1292,52 @@ private struct CategoryOverrideSettingsView: View {
                 }
             }
         }
-        .navigationTitle("材料カテゴリ")
+        .navigationTitle("材料分類先")
         .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            ToolbarItem(placement: .topBarTrailing) {
+                Button {
+                    showingAdd = true
+                } label: {
+                    Image(systemName: "plus")
+                }
+            }
+        }
+        .sheet(isPresented: $showingAdd) {
+            NavigationStack {
+                Form {
+                    Section {
+                        TextField("例: 水", text: $ingredientName)
+                        Picker("分類先", selection: $category) {
+                            ForEach(store.availableCategories, id: \.self) { category in
+                                Text(category).tag(category)
+                            }
+                        }
+                    } footer: {
+                        Text("登録した材料は、指定した分類で優先して表示します。")
+                    }
+                }
+                .navigationTitle("追加")
+                .navigationBarTitleDisplayMode(.inline)
+                .toolbar {
+                    ToolbarItem(placement: .cancellationAction) {
+                        Button("キャンセル") {
+                            ingredientName = ""
+                            showingAdd = false
+                        }
+                    }
+                    ToolbarItem(placement: .confirmationAction) {
+                        Button("追加") {
+                            store.updateCategoryOverride(name: ingredientName, category: category)
+                            ingredientName = ""
+                            showingAdd = false
+                        }
+                        .disabled(ingredientName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                    }
+                }
+            }
+            .presentationDetents([.medium])
+        }
         .scrollContentBackground(.hidden)
         .background(Color.recipistaBackground.ignoresSafeArea())
     }
@@ -1283,22 +1346,10 @@ private struct CategoryOverrideSettingsView: View {
 private struct QuantityTermSettingsView: View {
     @ObservedObject var store: RecipistaStore
     @State private var term = ""
+    @State private var showingAdd = false
 
     var body: some View {
         Form {
-            Section {
-                HStack {
-                    TextField("例: 少量", text: $term)
-                    Button("追加") {
-                        store.addQuantityTerm(term)
-                        term = ""
-                    }
-                    .disabled(term.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
-                }
-            } footer: {
-                Text("登録した単位や語句は、材料名ではなく数量側に表示します。")
-            }
-
             Section("登録済み") {
                 ForEach(store.quantityTerms, id: \.self) { term in
                     Text(term)
@@ -1312,6 +1363,45 @@ private struct QuantityTermSettingsView: View {
         }
         .navigationTitle("数量単位")
         .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            ToolbarItem(placement: .topBarTrailing) {
+                Button {
+                    showingAdd = true
+                } label: {
+                    Image(systemName: "plus")
+                }
+            }
+        }
+        .sheet(isPresented: $showingAdd) {
+            NavigationStack {
+                Form {
+                    Section {
+                        TextField("例: 少量", text: $term)
+                    } footer: {
+                        Text("登録した単位や語句は、材料名ではなく数量側に表示します。")
+                    }
+                }
+                .navigationTitle("追加")
+                .navigationBarTitleDisplayMode(.inline)
+                .toolbar {
+                    ToolbarItem(placement: .cancellationAction) {
+                        Button("キャンセル") {
+                            term = ""
+                            showingAdd = false
+                        }
+                    }
+                    ToolbarItem(placement: .confirmationAction) {
+                        Button("追加") {
+                            store.addQuantityTerm(term)
+                            term = ""
+                            showingAdd = false
+                        }
+                        .disabled(term.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                    }
+                }
+            }
+            .presentationDetents([.medium])
+        }
         .scrollContentBackground(.hidden)
         .background(Color.recipistaBackground.ignoresSafeArea())
     }
@@ -1319,21 +1409,40 @@ private struct QuantityTermSettingsView: View {
 
 private struct NativeAdSlotView: View {
     let adUnitID: String
+#if canImport(GoogleMobileAds)
+    @StateObject private var adModel = NativeAdModel()
+#endif
 
     var body: some View {
-        VStack(spacing: 4) {
-            Text("広告")
-                .font(.caption2.weight(.bold))
-                .foregroundStyle(.secondary)
+#if canImport(GoogleMobileAds)
+        Group {
+            if let nativeAd = adModel.nativeAd {
+                AdMobNativeAdView(nativeAd: nativeAd)
+                    .frame(maxWidth: .infinity, minHeight: 58)
+            } else {
+                adPlaceholder
+            }
         }
-        .frame(maxWidth: .infinity, minHeight: 52)
-        .background(Color.recipistaSecondaryPanel, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
-        .overlay {
-            RoundedRectangle(cornerRadius: 8, style: .continuous)
-                .stroke(Color.recipistaLine, style: StrokeStyle(lineWidth: 1, dash: [4]))
+        .onAppear {
+            adModel.load(adUnitID: adUnitID)
         }
-        .accessibilityLabel("広告")
         .accessibilityIdentifier("native-ad-\(adUnitID)")
+#else
+        adPlaceholder
+#endif
+    }
+
+    private var adPlaceholder: some View {
+        Text("広告")
+            .font(.caption2.weight(.bold))
+            .foregroundStyle(.secondary)
+            .frame(maxWidth: .infinity, minHeight: 52)
+            .background(Color.recipistaSecondaryPanel, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+            .overlay {
+                RoundedRectangle(cornerRadius: 8, style: .continuous)
+                    .stroke(Color.recipistaLine, style: StrokeStyle(lineWidth: 1, dash: [4]))
+            }
+            .accessibilityLabel("広告")
     }
 }
 
@@ -1487,7 +1596,7 @@ private struct AppRecipeListRow: View {
                 }
             } label: {
                 Text(recipePortionLabel(recipe: recipe, multiplier: recipe.multiplier ?? 1))
-                    .font(.caption2.weight(.bold))
+                    .font(.caption.weight(.bold))
                     .foregroundStyle(Color.recipistaGreen)
                     .lineLimit(1)
                     .minimumScaleFactor(0.75)
@@ -1590,7 +1699,11 @@ private struct ShoppingEditListView: View {
                 if !items.isEmpty {
                     Section {
                         ForEach(items) { item in
-                            AppShoppingEditRow(item: store.editingItem(for: item), categories: store.availableCategories) { updated in
+                            AppShoppingEditRow(
+                                item: store.editingItem(for: item),
+                                categories: store.availableCategories,
+                                onDelete: { store.deleteShoppingItem(key: item.key) }
+                            ) { updated in
                                 store.updateShoppingItem(updated)
                             }
                             .listRowInsets(EdgeInsets(top: 4, leading: 0, bottom: 4, trailing: 0))
@@ -1598,7 +1711,7 @@ private struct ShoppingEditListView: View {
                         }
                     } header: {
                         Text(category)
-                            .font(.footnote.weight(.bold))
+                            .font(.headline.weight(.bold))
                             .foregroundStyle(Color.recipistaGreen)
                             .dropDestination(for: String.self) { keys, _ in
                                 guard let key = keys.first else { return false }
@@ -1630,13 +1743,13 @@ private struct AppShoppingRow: View {
             .buttonStyle(.plain)
 
             Text(item.name)
-                .font(.callout.weight(.semibold))
+                .font(.footnote.weight(.semibold))
                 .foregroundStyle(isDone ? .secondary : .primary)
                 .strikethrough(isDone)
                 .frame(maxWidth: .infinity, alignment: .leading)
 
             Text(item.quantity)
-                .font(.callout.weight(.bold))
+                .font(.footnote.weight(.bold))
                 .foregroundStyle(.secondary)
                 .strikethrough(isDone)
                 .frame(width: 68, alignment: .trailing)
@@ -1667,16 +1780,18 @@ private struct AppShoppingEditRow: View {
     @State private var currentKey: String
     let onSave: (EditingShoppingIngredient) -> Void
     let categories: [String]
+    let onDelete: () -> Void
 
-    init(item: EditingShoppingIngredient, categories: [String], onSave: @escaping (EditingShoppingIngredient) -> Void) {
+    init(item: EditingShoppingIngredient, categories: [String], onDelete: @escaping () -> Void, onSave: @escaping (EditingShoppingIngredient) -> Void) {
         _item = State(initialValue: item)
         _currentKey = State(initialValue: item.id)
         self.categories = categories
+        self.onDelete = onDelete
         self.onSave = onSave
     }
 
     var body: some View {
-        HStack(spacing: 6) {
+        HStack(spacing: 8) {
             Image(systemName: "line.3.horizontal")
                 .font(.caption.weight(.bold))
                 .foregroundStyle(.secondary)
@@ -1684,22 +1799,39 @@ private struct AppShoppingEditRow: View {
                 .draggable(currentKey)
 
             TextField("材料名", text: $item.name)
-                .textFieldStyle(.roundedBorder)
+                .font(.footnote.weight(.semibold))
+                .textFieldStyle(.plain)
+                .padding(.vertical, 8)
+                .frame(maxWidth: .infinity, alignment: .leading)
 
             TextField("数量", text: $item.quantity)
-                .textFieldStyle(.roundedBorder)
-                .frame(width: 82)
+                .font(.footnote.weight(.bold))
+                .textFieldStyle(.plain)
+                .multilineTextAlignment(.trailing)
+                .padding(.vertical, 8)
+                .frame(width: 74, alignment: .trailing)
 
-            Picker("カテゴリ", selection: $item.category) {
-                ForEach(categories, id: \.self) { category in
-                    Text(category).tag(category)
+            Menu {
+                Picker("カテゴリ", selection: $item.category) {
+                    ForEach(categories, id: \.self) { category in
+                        Text(category).tag(category)
+                    }
                 }
+            } label: {
+                Image(systemName: "folder")
+                    .font(.caption.weight(.bold))
+                    .foregroundStyle(Color.recipistaGreen)
+                    .frame(width: 28, height: 28)
             }
-            .labelsHidden()
-            .frame(width: 86)
+
+            Button(role: .destructive, action: onDelete) {
+                Image(systemName: "trash")
+                    .font(.caption.weight(.bold))
+                    .frame(width: 28, height: 28)
+            }
+            .buttonStyle(.plain)
         }
-        .font(.caption)
-        .padding(.vertical, 7)
+        .padding(.vertical, 4)
         .onChange(of: item.name) { _, _ in persist() }
         .onChange(of: item.quantity) { _, _ in persist() }
         .onChange(of: item.category) { _, _ in persist() }

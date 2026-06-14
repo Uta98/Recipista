@@ -10,6 +10,8 @@ const adUnitIds = {
   extensionNative: "ca-app-pub-2083362073572230/1387508942"
 };
 
+const showShoppingListInExtension = false;
+
 const baseUnits = [
   "大さじ", "小さじ", "カップ", "パック", "切れ", "ふさ", "つまみ", "少々",
   "kg", "g", "ml", "l", "cc", "個", "本", "枚", "束", "袋", "缶", "合", "尾", "粒", "株"
@@ -42,6 +44,7 @@ let state = {
   currentRecipe: null,
   currentRecipeLoaded: false,
   registrationDismissed: false,
+  registrationSaved: false,
   editingCurrentRecipe: false,
   editingShoppingList: false,
   recipesExpanded: false,
@@ -896,6 +899,7 @@ function updateCurrentRecipe(recipe) {
   state.currentRecipe = recipe;
   state.currentRecipeLoaded = true;
   state.registrationDismissed = false;
+  state.registrationSaved = false;
   state.editingCurrentRecipe = false;
   const name = document.querySelector("#current-recipe-name");
   const meta = document.querySelector("#current-recipe-meta");
@@ -963,16 +967,16 @@ async function saveCurrentRecipe() {
   }
 
   await persistState();
-  state.registrationDismissed = true;
+  state.registrationDismissed = false;
+  state.registrationSaved = true;
   state.editingCurrentRecipe = false;
-  activateTab("shopping");
   render();
 }
 
 function closeRegistrationSheet() {
   state.registrationDismissed = true;
+  state.registrationSaved = false;
   state.editingCurrentRecipe = false;
-  activateTab("shopping");
   render();
 }
 
@@ -989,7 +993,7 @@ function renderRegistrationSheet() {
   const editName = document.querySelector("#edit-recipe-name");
   const savedNotice = document.querySelector("#current-recipe-saved");
   const multiplierControl = document.querySelector("#recipe-multiplier");
-  const shouldShow = shouldShowCurrentPreview() || shouldShowExtractionFailure();
+  const shouldShow = state.registrationSaved || shouldShowCurrentPreview() || shouldShowExtractionFailure();
 
   sheet.hidden = !shouldShow;
   if (!shouldShow) return;
@@ -1004,7 +1008,8 @@ function renderRegistrationSheet() {
   editButton.hidden = isFailure;
   editButton.textContent = state.editingCurrentRecipe ? "編集を閉じる" : "編集";
   editFields.hidden = !state.editingCurrentRecipe || isFailure;
-  savedNotice.hidden = !saved || state.editingCurrentRecipe || isFailure;
+  savedNotice.hidden = !(state.registrationSaved || saved) || state.editingCurrentRecipe || isFailure;
+  savedNotice.textContent = state.registrationSaved ? "Recipistaに登録しました" : "このレシピはすでに保存済みです";
   if (state.editingCurrentRecipe && recipe) {
     if (document.activeElement !== editName) editName.value = recipe.name || "";
     renderEditFields(recipe);
@@ -1018,7 +1023,7 @@ function renderRegistrationSheet() {
     : "抽出された材料はありません。";
   noResultActions.hidden = !isFailure;
   failureAd.hidden = !isFailure;
-  saveButton.disabled = isFailure || items.length === 0;
+  saveButton.disabled = isFailure || items.length === 0 || state.registrationSaved;
   saveButton.textContent = saved ? "更新する" : "保存する";
   if (multiplierControl && recipe) {
     for (const option of multiplierControl.options) {
@@ -1141,7 +1146,8 @@ function renderRecipes() {
   listPanel.hidden = !state.recipesExpanded || state.recipes.length === 0;
   selectedList.hidden = state.recipesExpanded || state.recipes.length === 0;
   toggleButton.hidden = state.recipes.length === 0;
-  toggleButton.textContent = state.recipesExpanded ? "⌄" : "›";
+  toggleButton.textContent = "›";
+  toggleButton.classList.toggle("open", state.recipesExpanded);
   toggleButton.title = state.recipesExpanded ? "保存レシピを閉じる" : "保存レシピを開く";
   toggleButton.setAttribute("aria-label", toggleButton.title);
   toggleButton.setAttribute("aria-expanded", String(state.recipesExpanded));
@@ -1242,9 +1248,19 @@ function renderShopping() {
   const uncheckedItems = uncheckedShoppingItems();
   const { activeItems, doneItems } = splitDoneItems(items, false);
 
+  if (!showShoppingListInExtension) {
+    list.innerHTML = "";
+    list.hidden = true;
+    empty.hidden = true;
+    shareButton.hidden = true;
+    clearButton.hidden = true;
+    editButton.hidden = true;
+    return;
+  }
+
   list.innerHTML = "";
   empty.hidden = items.length > 0;
-  title.textContent = "合算リスト";
+  title.textContent = "買い物リスト";
   shareButton.hidden = uncheckedItems.length === 0;
   clearButton.hidden = items.length === 0;
   editButton.hidden = items.length === 0;
