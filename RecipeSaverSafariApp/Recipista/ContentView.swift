@@ -1,5 +1,6 @@
 import SwiftUI
 import Foundation
+import UniformTypeIdentifiers
 #if canImport(WatchConnectivity)
 import WatchConnectivity
 #endif
@@ -139,6 +140,8 @@ private struct IngredientRecipeSource: Identifiable {
     let id = UUID()
     let recipeID: String
     let recipeName: String
+    let siteName: String?
+    let sourceURL: String?
     let imageURL: String?
     let quantity: String
 }
@@ -287,6 +290,8 @@ private final class RecipistaStore: ObservableObject {
                     IngredientRecipeSource(
                         recipeID: recipe.id,
                         recipeName: recipe.name,
+                        siteName: recipe.siteName,
+                        sourceURL: recipe.sourceUrl,
                         imageURL: recipe.imageUrl,
                         quantity: Self.formatQuantity(quantities: sourceQuantities, notes: sourceNotes, unitDisplay: unitDisplay)
                     )
@@ -395,13 +400,6 @@ private final class RecipistaStore: ObservableObject {
 
     func updateTextSize(_ value: AppTextSize) {
         textSize = value
-        save()
-    }
-
-    func updateYieldText(for recipe: StoredRecipe, value: String) {
-        guard let index = recipes.firstIndex(where: { $0.id == recipe.id }) else { return }
-        let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
-        recipes[index].yieldText = trimmed.isEmpty ? nil : trimmed
         save()
     }
 
@@ -729,7 +727,45 @@ private final class RecipistaStore: ObservableObject {
     }
 
     private static func format(_ value: Double) -> String {
-        value.rounded() == value ? String(Int(value)) : String(format: "%.1f", value)
+        let roundedInteger = value.rounded()
+        if abs(value - roundedInteger) < 0.0001 {
+            return String(Int(roundedInteger))
+        }
+
+        let whole = Int(value.rounded(.down))
+        let fraction = value - Double(whole)
+        let denominators = [2, 3, 4, 5, 6, 8, 10, 12, 16]
+        let best = denominators
+            .map { denominator -> (denominator: Int, numerator: Int, distance: Double) in
+                let numerator = max(1, min(denominator, Int((fraction * Double(denominator)).rounded())))
+                return (denominator, numerator, abs(fraction - Double(numerator) / Double(denominator)))
+            }
+            .min { $0.distance < $1.distance }
+
+        if let best {
+            if best.numerator == best.denominator {
+                return String(whole + 1)
+            }
+            let gcd = greatestCommonDivisor(best.numerator, best.denominator)
+            let reducedNumerator = best.numerator / gcd
+            let reducedDenominator = best.denominator / gcd
+            return whole > 0
+                ? "\(whole)と\(reducedNumerator)/\(reducedDenominator)"
+                : "\(reducedNumerator)/\(reducedDenominator)"
+        }
+
+        return String(Int(value.rounded()))
+    }
+
+    private static func greatestCommonDivisor(_ lhs: Int, _ rhs: Int) -> Int {
+        var a = abs(lhs)
+        var b = abs(rhs)
+        while b != 0 {
+            let remainder = a % b
+            a = b
+            b = remainder
+        }
+        return max(a, 1)
     }
 
     private static func normalizedMultiplier(_ value: Double) -> Double {
@@ -928,103 +964,115 @@ struct ContentView: View {
             savedRecipeSelector
             Divider()
 
-            HStack(alignment: .center, spacing: 8) {
-                VStack(alignment: .leading, spacing: 2) {
-                    Text("買い物リスト")
-                        .font(.title3.weight(.bold))
-                        .foregroundStyle(Color.recipistaGreen)
+            LazyVStack(alignment: .leading, spacing: 0, pinnedViews: [.sectionHeaders]) {
+                Section {
+                    shoppingListContent
+                } header: {
+                    shoppingListHeader
+                        .padding(.vertical, 8)
+                        .background(Color.recipistaPanel)
                 }
-                Spacer()
-                if !store.shoppingItems.isEmpty {
-                    ShareLink(item: store.shoppingShareText) {
-                        Image(systemName: "square.and.arrow.up")
-                            .font(.system(size: 15, weight: .bold))
-                            .frame(width: 30, height: 30)
-                    }
-                    .buttonStyle(.plain)
-                    .foregroundStyle(Color.recipistaGreen)
-                    .overlay {
-                        RoundedRectangle(cornerRadius: 8, style: .continuous)
-                            .stroke(Color.recipistaLine)
-                    }
-
-                    Button {
-                        isEditingShoppingList.toggle()
-                    } label: {
-                        Image(systemName: isEditingShoppingList ? "checkmark" : "pencil")
-                            .font(.system(size: 16, weight: .black))
-                            .frame(width: 30, height: 30)
-                    }
-                    .buttonStyle(.plain)
-                    .foregroundStyle(Color.recipistaGreen)
-                    .overlay {
-                        RoundedRectangle(cornerRadius: 8, style: .continuous)
-                            .stroke(Color.recipistaLine)
-                    }
-
-                    Button {
-                        store.clearDone()
-                    } label: {
-                        Text("すべてチェック解除")
-                            .frame(height: 30)
-                            .padding(.horizontal, 10)
-                    }
-                    .font(.caption2.weight(.bold))
-                    .buttonStyle(.plain)
-                    .foregroundStyle(Color.recipistaGreen)
-                    .overlay {
-                        RoundedRectangle(cornerRadius: 8, style: .continuous)
-                            .stroke(Color.recipistaLine)
-                    }
-                }
-            }
-
-            if store.shoppingItems.isEmpty {
-                Text("保存済みレシピにチェックを入れると材料がまとまります。")
-                    .font(.footnote)
-                    .foregroundStyle(.secondary)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(14)
-                    .overlay {
-                        RoundedRectangle(cornerRadius: 8, style: .continuous)
-                            .stroke(Color.recipistaLine, style: StrokeStyle(lineWidth: 1, dash: [4]))
-                    }
-            } else {
-                if isEditingShoppingList {
-                    ShoppingEditListView(store: store)
-                } else {
-                    VStack(spacing: 0) {
-                    shoppingGroups(for: store.activeShoppingItems)
-
-                    if !store.doneShoppingItems.isEmpty {
-                        NativeAdSlotView(adUnitID: AdConfiguration.appShoppingNativeAdUnitID)
-                            .padding(.top, 12)
-                            .padding(.bottom, 2)
-
-                        Text("チェック済み")
-                            .font(.headline.weight(.bold))
-                            .foregroundStyle(.secondary)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                            .padding(.top, 14)
-                            .padding(.bottom, 4)
-                            .overlay(alignment: .top) {
-                                Divider()
-                            }
-                        shoppingGroups(for: store.doneShoppingItems)
-                    }
-                    }
-                }
-            }
-
-            if !store.statusMessage.isEmpty {
-                Text(store.statusMessage)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
             }
         }
         .frame(maxWidth: .infinity, minHeight: UIScreen.main.bounds.height * 0.64, alignment: .topLeading)
         .padding(16)
         .background(Color.recipistaPanel, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+    }
+
+    private var shoppingListHeader: some View {
+        HStack(alignment: .center, spacing: 8) {
+            Text("買い物リスト")
+                .font(.title3.weight(.bold))
+                .foregroundStyle(Color.recipistaGreen)
+            Spacer()
+            if !store.shoppingItems.isEmpty {
+                ShareLink(item: store.shoppingShareText) {
+                    Image(systemName: "square.and.arrow.up")
+                        .font(.system(size: 15, weight: .bold))
+                        .frame(width: 30, height: 30)
+                }
+                .buttonStyle(.plain)
+                .foregroundStyle(Color.recipistaGreen)
+                .overlay {
+                    RoundedRectangle(cornerRadius: 8, style: .continuous)
+                        .stroke(Color.recipistaLine)
+                }
+
+                Button {
+                    isEditingShoppingList.toggle()
+                } label: {
+                    Image(systemName: isEditingShoppingList ? "checkmark" : "pencil")
+                        .font(.system(size: 16, weight: .black))
+                        .frame(width: 30, height: 30)
+                }
+                .buttonStyle(.plain)
+                .foregroundStyle(Color.recipistaGreen)
+                .overlay {
+                    RoundedRectangle(cornerRadius: 8, style: .continuous)
+                        .stroke(Color.recipistaLine)
+                }
+
+                Button {
+                    store.clearDone()
+                } label: {
+                    Text("すべてチェック解除")
+                        .frame(height: 30)
+                        .padding(.horizontal, 10)
+                }
+                .font(.caption2.weight(.bold))
+                .buttonStyle(.plain)
+                .foregroundStyle(Color.recipistaGreen)
+                .overlay {
+                    RoundedRectangle(cornerRadius: 8, style: .continuous)
+                        .stroke(Color.recipistaLine)
+                }
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var shoppingListContent: some View {
+        if store.shoppingItems.isEmpty {
+            Text("保存済みレシピにチェックを入れると材料がまとまります。")
+                .font(.footnote)
+                .foregroundStyle(.secondary)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(14)
+                .overlay {
+                    RoundedRectangle(cornerRadius: 8, style: .continuous)
+                        .stroke(Color.recipistaLine, style: StrokeStyle(lineWidth: 1, dash: [4]))
+                }
+        } else if isEditingShoppingList {
+            ShoppingEditListView(store: store)
+        } else {
+            VStack(spacing: 0) {
+                shoppingGroups(for: store.activeShoppingItems)
+
+                if !store.doneShoppingItems.isEmpty {
+                    NativeAdSlotView(adUnitID: AdConfiguration.appShoppingNativeAdUnitID)
+                        .padding(.top, 12)
+                        .padding(.bottom, 2)
+
+                    Text("チェック済み")
+                        .font(.headline.weight(.bold))
+                        .foregroundStyle(.secondary)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(.top, 14)
+                        .padding(.bottom, 4)
+                        .overlay(alignment: .top) {
+                            Divider()
+                        }
+                    shoppingGroups(for: store.doneShoppingItems)
+                }
+            }
+        }
+
+        if !store.statusMessage.isEmpty {
+            Text(store.statusMessage)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .padding(.top, 8)
+        }
     }
 
     private var settingsView: some View {
@@ -1146,9 +1194,6 @@ struct ContentView: View {
                             onMultiplierChange: { value in
                                 store.updateMultiplier(for: recipe, value: value)
                             },
-                            onYieldTextChange: { value in
-                                store.updateYieldText(for: recipe, value: value)
-                            },
                             onDelete: {
                                 store.deleteRecipe(recipe)
                             }
@@ -1203,10 +1248,9 @@ struct ContentView: View {
                 .padding(.top, 16)
                 .padding(.bottom, 3)
                 .contentShape(Rectangle())
-                .dropDestination(for: String.self) { keys, _ in
-                    guard isEditingShoppingList, let key = keys.first else { return false }
-                    store.moveShoppingItem(key: key, to: category)
-                    return true
+                .onDrop(of: [UTType.text], isTargeted: nil) { providers in
+                    guard isEditingShoppingList else { return false }
+                    return moveShoppingItem(from: providers, to: category)
                 }
 
                 ForEach(categoryItems) { item in
@@ -1231,6 +1275,17 @@ struct ContentView: View {
                 }
             }
         }
+    }
+
+    private func moveShoppingItem(from providers: [NSItemProvider], to category: String) -> Bool {
+        guard let provider = providers.first else { return false }
+        provider.loadObject(ofClass: NSString.self) { value, _ in
+            guard let key = value as? String else { return }
+            Task { @MainActor in
+                store.moveShoppingItem(key: key, to: category)
+            }
+        }
+        return true
     }
 
     private var extensionPreview: some View {
@@ -1665,10 +1720,7 @@ private struct AppRecipeListRow: View {
     let isSelected: Bool
     let onToggle: () -> Void
     let onMultiplierChange: (Double) -> Void
-    let onYieldTextChange: (String) -> Void
     let onDelete: () -> Void
-    @State private var editedYieldText = ""
-    @State private var showsYieldEditor = false
 
     var body: some View {
         HStack(spacing: 10) {
@@ -1697,15 +1749,6 @@ private struct AppRecipeListRow: View {
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
-                Button {
-                    editedYieldText = recipe.yieldText ?? ""
-                    showsYieldEditor = true
-                } label: {
-                    Text(recipe.yieldText?.isEmpty == false ? "何人分: \(recipe.yieldText ?? "")" : "何人分を設定")
-                        .font(.caption2.weight(.bold))
-                        .foregroundStyle(Color.recipistaGreen)
-                }
-                .buttonStyle(.plain)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
 
@@ -1735,32 +1778,6 @@ private struct AppRecipeListRow: View {
         }
         .frame(maxWidth: .infinity)
         .padding(.vertical, 8)
-        .sheet(isPresented: $showsYieldEditor) {
-            NavigationStack {
-                Form {
-                    Section {
-                        TextField("例: 2人分", text: $editedYieldText)
-                            .textInputAutocapitalization(.never)
-                    } footer: {
-                        Text("何人分かを直すと、保存レシピの表示と買い物リストの分量計算に反映します。")
-                    }
-                }
-                .navigationTitle("何人分を修正")
-                .navigationBarTitleDisplayMode(.inline)
-                .toolbar {
-                    ToolbarItem(placement: .cancellationAction) {
-                        Button("キャンセル") { showsYieldEditor = false }
-                    }
-                    ToolbarItem(placement: .confirmationAction) {
-                        Button("保存") {
-                            onYieldTextChange(editedYieldText)
-                            showsYieldEditor = false
-                        }
-                    }
-                }
-            }
-            .presentationDetents([.medium])
-        }
     }
 }
 
@@ -1851,10 +1868,8 @@ private struct ShoppingEditListView: View {
                         .padding(.top, 16)
                         .padding(.bottom, 3)
                         .contentShape(Rectangle())
-                        .dropDestination(for: String.self) { keys, _ in
-                            guard let key = keys.first else { return false }
-                            store.moveShoppingItem(key: key, to: category)
-                            return true
+                        .onDrop(of: [UTType.text], isTargeted: nil) { providers in
+                            moveShoppingItem(from: providers, to: category)
                         }
 
                     ForEach(items) { item in
@@ -1872,6 +1887,17 @@ private struct ShoppingEditListView: View {
             }
         }
         .background(Color.recipistaPanel)
+    }
+
+    private func moveShoppingItem(from providers: [NSItemProvider], to category: String) -> Bool {
+        guard let provider = providers.first else { return false }
+        provider.loadObject(ofClass: NSString.self) { value, _ in
+            guard let key = value as? String else { return }
+            Task { @MainActor in
+                store.moveShoppingItem(key: key, to: category)
+            }
+        }
+        return true
     }
 }
 
@@ -1910,26 +1936,59 @@ private struct AppShoppingRow: View {
 
 private struct RecipeSourceMenu: View {
     let sources: [IngredientRecipeSource]
+    @State private var showsSources = false
 
     var body: some View {
-        Menu {
-            if sources.isEmpty {
-                Text("内訳なし")
-            } else {
-                ForEach(sources) { source in
-                    Text([source.recipeName, source.quantity].filter { !$0.isEmpty }.joined(separator: " "))
-                }
-            }
+        Button {
+            showsSources = true
         } label: {
-            ZStack(alignment: .leading) {
+            ZStack(alignment: .trailing) {
                 ForEach(Array(sources.prefix(3).enumerated()), id: \.offset) { index, source in
                     RecipeSourceThumb(source: source)
-                        .offset(x: CGFloat(index) * 14)
+                        .offset(x: -CGFloat(index) * 14)
                 }
             }
-            .frame(width: 58, height: 28, alignment: .leading)
+            .frame(width: 58, height: 28, alignment: .trailing)
         }
         .buttonStyle(.plain)
+        .frame(width: 58, alignment: .trailing)
+        .sheet(isPresented: $showsSources) {
+            NavigationStack {
+                List {
+                    ForEach(sources) { source in
+                        HStack(spacing: 10) {
+                            RecipeSourceThumb(source: source)
+                            VStack(alignment: .leading, spacing: 3) {
+                                Text(source.recipeName)
+                                    .font(.subheadline.weight(.semibold))
+                                if let sourceURL = source.sourceURL,
+                                   let url = URL(string: sourceURL),
+                                   source.siteName != "手入力" {
+                                    Link(source.siteName ?? sourceURL, destination: url)
+                                        .font(.caption.weight(.semibold))
+                                        .foregroundStyle(Color.recipistaGreen)
+                                        .underline()
+                                }
+                            }
+                            Spacer()
+                            if !source.quantity.isEmpty {
+                                Text(source.quantity)
+                                    .font(.caption.weight(.bold))
+                                    .foregroundStyle(.secondary)
+                            }
+                        }
+                    }
+                }
+                .navigationTitle("レシピ内訳")
+                .navigationBarTitleDisplayMode(.inline)
+                .toolbar {
+                    ToolbarItem(placement: .confirmationAction) {
+                        Button("閉じる") { showsSources = false }
+                    }
+                }
+            }
+            .presentationDetents([.medium])
+        }
     }
 }
 
@@ -1985,13 +2044,16 @@ private struct AppShoppingEditRow: View {
                 .font(.caption.weight(.bold))
                 .foregroundStyle(.secondary)
                 .frame(width: 22)
-                .draggable(currentKey)
+                .onDrag {
+                    NSItemProvider(object: currentKey as NSString)
+                }
 
             TextField("材料名", text: $item.name)
                 .font(.system(size: textSize.bodySize, weight: .semibold))
                 .textFieldStyle(.plain)
                 .padding(.vertical, 8)
                 .frame(maxWidth: .infinity, alignment: .leading)
+                .onSubmit { persist() }
 
             TextField("数量", text: $item.quantity)
                 .font(.system(size: textSize.bodySize, weight: .bold))
@@ -1999,6 +2061,7 @@ private struct AppShoppingEditRow: View {
                 .multilineTextAlignment(.trailing)
                 .padding(.vertical, 8)
                 .frame(width: 74, alignment: .trailing)
+                .onSubmit { persist() }
 
             Menu {
                 Picker("カテゴリ", selection: $item.category) {
@@ -2021,9 +2084,8 @@ private struct AppShoppingEditRow: View {
             .buttonStyle(.plain)
         }
         .padding(.vertical, 4)
-        .onChange(of: item.name) { _, _ in persist() }
-        .onChange(of: item.quantity) { _, _ in persist() }
         .onChange(of: item.category) { _, _ in persist() }
+        .onDisappear { persist() }
     }
 
     private func persist() {
@@ -2034,7 +2096,6 @@ private struct AppShoppingEditRow: View {
             category: item.category
         )
         onSave(updated)
-        currentKey = item.name.replacingOccurrences(of: " ", with: "").lowercased()
     }
 }
 

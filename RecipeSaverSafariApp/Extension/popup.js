@@ -651,6 +651,7 @@ function editedRecipeDraft() {
   if (!state.currentRecipe) return null;
 
   const name = normalizeText(document.querySelector("#edit-recipe-name")?.value) || state.currentRecipe.name;
+  const yieldText = normalizeText(document.querySelector("#edit-recipe-yield")?.value);
   const rows = Array.from(document.querySelectorAll(".edit-ingredient-row"));
   const ingredients = rows.map((row) => {
     const itemName = normalizeText(row.querySelector(".edit-ingredient-name")?.value);
@@ -662,6 +663,7 @@ function editedRecipeDraft() {
   return {
     ...state.currentRecipe,
     name,
+    yieldText,
     ingredients
   };
 }
@@ -1017,6 +1019,7 @@ function renderRegistrationSheet() {
   const editButton = document.querySelector("#edit-current");
   const editFields = document.querySelector("#recipe-edit-fields");
   const editName = document.querySelector("#edit-recipe-name");
+  const editYield = document.querySelector("#edit-recipe-yield");
   const savedNotice = document.querySelector("#current-recipe-saved");
   const multiplierControl = document.querySelector("#recipe-multiplier");
   const shouldShow = state.registrationSaved || shouldShowCurrentPreview() || shouldShowExtractionFailure();
@@ -1050,6 +1053,7 @@ function renderRegistrationSheet() {
   }
   if (state.editingCurrentRecipe && recipe) {
     if (document.activeElement !== editName) editName.value = recipe.name || "";
+    if (document.activeElement !== editYield) editYield.value = recipe.yieldText || "";
     renderEditFields(recipe);
   }
 
@@ -1566,6 +1570,7 @@ async function setupActions() {
     if (state.editingCurrentRecipe) {
       const recipe = savedCurrentRecipe() || state.currentRecipe;
       document.querySelector("#edit-recipe-name").value = recipe?.name || "";
+      document.querySelector("#edit-recipe-yield").value = recipe?.yieldText || "";
       renderEditFields(recipe);
     }
     renderRegistrationSheet();
