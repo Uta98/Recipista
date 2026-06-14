@@ -1,0 +1,280 @@
+<!doctype html>
+<html lang="ja">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Recipista</title>
+    <link rel="stylesheet" href="popup.css">
+  </head>
+  <body>
+    <main class="app-shell">
+      <header class="topbar">
+        <div>
+          <img class="brand-logo" src="icons/recipista-logo.svg" alt="Recipista">
+        </div>
+        <div class="top-actions">
+          <button id="open-app" class="app-open-button" type="button" title="アプリで開く" aria-label="アプリで開く">
+            <img src="icons/app-icon.png" alt="">
+          </button>
+          <button id="open-manual" class="icon-button subtle" type="button" title="手入力でレシピを追加" aria-label="手入力でレシピを追加">+</button>
+          <button id="open-settings" class="icon-button subtle" type="button" title="設定" aria-label="設定">⚙︎</button>
+        </div>
+      </header>
+
+      <section id="registration-sheet" class="registration-sheet" hidden aria-live="polite">
+        <div class="sheet-card">
+          <div class="sheet-header">
+            <div>
+              <p class="section-label">新規登録</p>
+              <h2 id="current-recipe-name">レシピを読み込み中</h2>
+              <p id="current-recipe-meta" class="muted">Safariでレシピページを開いてください</p>
+              <p id="current-recipe-saved" class="saved-notice" hidden>このレシピはすでに保存済みです</p>
+            </div>
+            <button id="close-registration" class="icon-button close" type="button" title="閉じる" aria-label="閉じる">×</button>
+          </div>
+          <div id="current-recipe-image" class="recipe-image large" hidden></div>
+          <div id="recipe-edit-fields" class="recipe-edit-fields" hidden>
+            <label>
+              <span>レシピ名</span>
+              <input id="edit-recipe-name" type="text">
+            </label>
+            <div id="edit-ingredient-groups" class="edit-ingredient-groups"></div>
+          </div>
+          <ul id="preview-list" class="shopping-list preview-list"></ul>
+          <p id="preview-empty" class="empty">レシピを確認しています。</p>
+          <div id="no-result-actions" class="empty-actions" hidden>
+            <button id="open-manual-from-failure" class="text-button" type="button">手入力する</button>
+          </div>
+          <aside id="failure-ad" class="ad-slot" data-ad-unit-id="ca-app-pub-2083362073572230/1387508942" hidden>
+            <span>広告</span>
+          </aside>
+          <div class="sheet-actions">
+            <button id="edit-current" class="text-button" type="button">編集</button>
+            <label class="multiplier-control" title="保存する分量">
+              <select id="recipe-multiplier" aria-label="保存する分量">
+                <option value="0.5">0.5</option>
+                <option value="1" selected>1</option>
+                <option value="1.5">1.5</option>
+                <option value="2">2</option>
+                <option value="2.5">2.5</option>
+                <option value="3">3</option>
+                <option value="3.5">3.5</option>
+                <option value="4">4</option>
+                <option value="4.5">4.5</option>
+                <option value="5">5</option>
+              </select>
+            </label>
+            <button id="save-current" class="text-button primary-action" type="button">保存する</button>
+          </div>
+        </div>
+      </section>
+
+      <section id="shopping-panel" class="panel active">
+        <section class="saved-recipe-selector" aria-label="保存レシピ">
+          <div class="selector-header">
+            <div>
+              <p class="section-label">保存レシピ</p>
+              <h2>使うレシピを選ぶ</h2>
+            </div>
+            <div class="panel-actions">
+              <button id="clear-recipes" class="text-button danger-text" type="button">すべて削除</button>
+              <button id="toggle-recipes" class="toggle-button" type="button" title="保存レシピを開く" aria-label="保存レシピを開く" aria-expanded="false">›</button>
+            </div>
+          </div>
+          <div id="selected-recipe-strip" class="recipe-strip selected-strip"></div>
+          <div id="recipe-list-panel" class="recipe-list-panel" hidden>
+            <div id="recipe-strip" class="recipe-strip expanded"></div>
+          </div>
+          <p id="recipe-empty" class="empty compact-empty">まだ保存されたレシピはありません。</p>
+        </section>
+
+        <div class="panel-header">
+          <div>
+            <p class="section-label">選択中レシピの材料</p>
+            <h2 id="shopping-title">合算リスト</h2>
+          </div>
+          <div class="panel-actions">
+            <button id="share-notes" class="icon-button share-button" type="button" title="メモへToDo共有" aria-label="メモへToDo共有">
+              <svg viewBox="0 0 24 24" aria-hidden="true">
+                <path d="M12 3v11"></path>
+                <path d="M8 7l4-4 4 4"></path>
+                <path d="M6 13v6h12v-6"></path>
+              </svg>
+            </button>
+            <button id="edit-shopping" class="icon-button share-button" type="button" title="材料をまとめて編集" aria-label="材料をまとめて編集">✎</button>
+            <button id="clear-done" class="text-button" type="button">すべてチェック解除</button>
+          </div>
+        </div>
+        <ul id="shopping-list" class="shopping-list"></ul>
+        <p id="shopping-empty" class="empty">保存済みレシピにチェックを入れると材料がまとまります。</p>
+        <section id="manual-entry" class="manual-entry" hidden>
+          <div class="manual-card">
+            <div class="sheet-header">
+              <div>
+                <p class="section-label">新規登録</p>
+                <h2>手入力で追加</h2>
+              </div>
+              <button id="cancel-manual" class="icon-button close" type="button" title="閉じる" aria-label="閉じる">×</button>
+            </div>
+            <div class="manual-grid">
+              <label>
+                <span>レシピ名</span>
+                <input id="manual-recipe-name" type="text" placeholder="例: 肉じゃが">
+              </label>
+              <label>
+                <span>材料</span>
+                <textarea id="manual-ingredients" rows="5" placeholder="じゃがいも 3個&#10;玉ねぎ 1個&#10;しょうゆ 大さじ2"></textarea>
+              </label>
+            </div>
+            <div class="form-actions">
+              <button id="save-manual" class="text-button primary-action" type="button">保存する</button>
+            </div>
+          </div>
+        </section>
+      </section>
+
+      <section id="settings-panel" class="panel">
+        <div class="settings-top">
+          <button id="close-settings" class="icon-button close close-settings" type="button" title="閉じる" aria-label="閉じる">×</button>
+        </div>
+        <div class="panel-header">
+          <div>
+            <p class="section-label">使いやすさ</p>
+            <h2>設定</h2>
+          </div>
+        </div>
+
+        <div class="settings-list">
+          <section class="settings-card">
+            <div>
+              <h3>分量表示</h3>
+              <p class="muted">大さじ/小さじとmlを切り替えて表示できます。</p>
+            </div>
+            <div class="unit-options" role="radiogroup" aria-label="分量表示">
+              <label>
+                <input type="radio" name="unit-display" value="spoons">
+                <span>大さじ/小さじ</span>
+              </label>
+              <label>
+                <input type="radio" name="unit-display" value="ml">
+                <span>ml表示</span>
+              </label>
+            </div>
+          </section>
+
+          <section class="settings-card">
+            <div>
+              <h3>材料カテゴリ</h3>
+              <p class="muted">よく使う材料の振り分け先を指定できます。</p>
+            </div>
+            <button id="open-category-settings" class="settings-link-button" type="button">
+              <span>材料カテゴリを編集</span>
+              <strong id="category-override-count">0件</strong>
+            </button>
+          </section>
+
+          <section class="settings-card">
+            <div>
+              <h3>数量として扱う語句</h3>
+              <p class="muted">適量・少量などを数量側に表示できます。</p>
+            </div>
+            <button id="open-quantity-settings" class="settings-link-button" type="button">
+              <span>数量語句を編集</span>
+              <strong id="quantity-term-count">0件</strong>
+            </button>
+          </section>
+        </div>
+      </section>
+
+      <section id="category-settings-panel" class="panel">
+        <div class="settings-top">
+          <button id="close-category-settings" class="icon-button close close-settings" type="button" title="閉じる" aria-label="閉じる">×</button>
+        </div>
+        <div class="panel-header">
+          <div>
+            <p class="section-label">分類</p>
+            <h2>材料カテゴリ</h2>
+          </div>
+        </div>
+        <div class="settings-list">
+          <section class="settings-card">
+            <div class="category-override-form">
+              <input id="category-override-name" type="text" placeholder="例: 水">
+              <select id="category-override-category" aria-label="カテゴリ">
+                <option value="肉・魚">肉・魚</option>
+                <option value="野菜">野菜</option>
+                <option value="卵・乳製品">卵・乳製品</option>
+                <option value="調味料">調味料</option>
+                <option value="その他">その他</option>
+              </select>
+              <button id="add-category-override" class="text-button" type="button">追加</button>
+            </div>
+            <div id="category-override-list" class="category-override-list"></div>
+          </section>
+        </div>
+      </section>
+
+      <section id="quantity-settings-panel" class="panel">
+        <div class="settings-top">
+          <button id="close-quantity-settings" class="icon-button close close-settings" type="button" title="閉じる" aria-label="閉じる">×</button>
+        </div>
+        <div class="panel-header">
+          <div>
+            <p class="section-label">数量</p>
+            <h2>数量語句</h2>
+          </div>
+        </div>
+        <div class="settings-list">
+          <section class="settings-card">
+            <div class="category-override-form quantity-term-form">
+              <input id="quantity-term-name" type="text" placeholder="例: 少量">
+              <button id="add-quantity-term" class="text-button" type="button">追加</button>
+            </div>
+            <div id="quantity-term-list" class="category-override-list"></div>
+          </section>
+        </div>
+      </section>
+    </main>
+
+    <template id="recipe-chip-template">
+      <article class="recipe-chip">
+        <label class="recipe-pick">
+          <input type="checkbox">
+          <span class="recipe-thumb" aria-hidden="true"></span>
+          <span></span>
+        </label>
+        <div class="recipe-chip-actions">
+          <a target="_blank" rel="noreferrer">開く</a>
+          <select class="recipe-multiplier" aria-label="保存済みレシピの分量">
+            <option value="0.5">0.5</option>
+            <option value="1">1</option>
+            <option value="1.5">1.5</option>
+            <option value="2">2</option>
+            <option value="2.5">2.5</option>
+            <option value="3">3</option>
+            <option value="3.5">3.5</option>
+            <option value="4">4</option>
+            <option value="4.5">4.5</option>
+            <option value="5">5</option>
+          </select>
+          <button class="icon-button danger" type="button" title="削除" aria-label="削除">×</button>
+        </div>
+      </article>
+    </template>
+
+    <template id="shopping-row-template">
+      <li class="shopping-row">
+        <label>
+          <input type="checkbox">
+          <span class="item-main">
+            <span class="item-name"></span>
+            <span class="item-quantity"></span>
+          </span>
+          <span class="recipe-thumbs"></span>
+        </label>
+      </li>
+    </template>
+
+    <script src="popup.js"></script>
+  </body>
+</html>

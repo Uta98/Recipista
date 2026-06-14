@@ -1,0 +1,31 @@
+{
+  "manifest_version": 3,
+  "name": "Recipista",
+  "version": "1.0.0",
+  "description": "Save recipe pages and combine selected ingredients into a shopping checklist.",
+  "permissions": ["activeTab", "nativeMessaging", "storage"],
+  "host_permissions": ["<all_urls>"],
+  "content_security_policy": {
+    "extension_pages": "script-src 'self'; object-src 'self'; img-src 'self' data: blob: http: https:"
+  },
+  "action": {
+    "default_title": "Recipista",
+    "default_popup": "popup.html"
+  },
+  "background": {
+    "service_worker": "background.js"
+  },
+  "content_scripts": [
+    {
+      "matches": ["<all_urls>"],
+      "js": ["content.js"],
+      "run_at": "document_idle"
+    }
+  ],
+  "icons": {
+    "16": "icons/icon.svg",
+    "32": "icons/icon.svg",
+    "48": "icons/icon.svg",
+    "128": "icons/icon.svg"
+  }
+}
