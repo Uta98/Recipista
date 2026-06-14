@@ -475,7 +475,7 @@ function formatNumber(value) {
 function normalizeMultiplier(value) {
   const number = Number(value);
   if (!Number.isFinite(number) || number <= 0) return 1;
-  return Math.min(5, Math.max(0.5, Math.round(number * 2) / 2));
+  return Math.min(10, Math.max(0.1, number));
 }
 
 function recipeYieldPeople(value) {
@@ -494,6 +494,31 @@ function recipePortionLabel(recipe, multiplier = normalizeMultiplier(recipe?.mul
 
 function compactPortionLabel(recipe, multiplier = normalizeMultiplier(recipe?.multiplier)) {
   return recipePortionLabel(recipe, multiplier);
+}
+
+function portionMultiplierOptions(recipe) {
+  const people = recipeYieldPeople(normalizeText(recipe?.yieldText || ""));
+  if (people) {
+    return Array.from({ length: 10 }, (_, index) => (index + 1) / people);
+  }
+  return Array.from({ length: 10 }, (_, index) => (index + 1) * 0.5);
+}
+
+function refreshPortionSelect(select, recipe, selectedValue) {
+  if (!select || !recipe) return;
+  const normalizedSelected = Number(selectedValue || recipe.multiplier || 1);
+  select.innerHTML = "";
+  for (const value of portionMultiplierOptions(recipe)) {
+    const option = document.createElement("option");
+    option.value = String(value);
+    option.textContent = recipePortionLabel(recipe, value);
+    select.append(option);
+  }
+  const closest = Array.from(select.options).reduce((best, option) => {
+    const distance = Math.abs(Number(option.value) - normalizedSelected);
+    return !best || distance < best.distance ? { value: option.value, distance } : best;
+  }, null);
+  if (closest) select.value = closest.value;
 }
 
 function formatQuantityPart(unit, quantity) {
@@ -971,6 +996,7 @@ async function saveCurrentRecipe() {
   state.registrationSaved = true;
   state.editingCurrentRecipe = false;
   render();
+  setTimeout(() => window.close(), 900);
 }
 
 function closeRegistrationSheet() {
@@ -1010,6 +1036,18 @@ function renderRegistrationSheet() {
   editFields.hidden = !state.editingCurrentRecipe || isFailure;
   savedNotice.hidden = !(state.registrationSaved || saved) || state.editingCurrentRecipe || isFailure;
   savedNotice.textContent = state.registrationSaved ? "Recipistaに登録しました" : "このレシピはすでに保存済みです";
+  if (state.registrationSaved) {
+    previewList.innerHTML = "";
+    previewList.hidden = true;
+    previewEmpty.hidden = true;
+    noResultActions.hidden = true;
+    failureAd.hidden = true;
+    editButton.hidden = true;
+    editFields.hidden = true;
+    saveButton.disabled = true;
+    saveButton.textContent = "保存済み";
+    return;
+  }
   if (state.editingCurrentRecipe && recipe) {
     if (document.activeElement !== editName) editName.value = recipe.name || "";
     renderEditFields(recipe);
@@ -1026,9 +1064,7 @@ function renderRegistrationSheet() {
   saveButton.disabled = isFailure || items.length === 0 || state.registrationSaved;
   saveButton.textContent = saved ? "更新する" : "保存する";
   if (multiplierControl && recipe) {
-    for (const option of multiplierControl.options) {
-      option.textContent = recipePortionLabel(recipe, Number(option.value));
-    }
+    refreshPortionSelect(multiplierControl, recipe, currentMultiplier());
   }
 
   if (!isFailure && !state.editingCurrentRecipe) {
@@ -1180,10 +1216,7 @@ function renderRecipes() {
     link.href = recipe.sourceUrl || "#";
     link.textContent = recipe.siteName || recipe.sourceUrl || "レシピを開く";
     link.hidden = recipe.extractionMethod === "manual" || recipe.siteName === "手入力";
-    multiplierSelect.value = String(multiplier);
-    for (const option of multiplierSelect.options) {
-      option.textContent = compactPortionLabel(recipe, Number(option.value));
-    }
+    refreshPortionSelect(multiplierSelect, recipe, multiplier);
     multiplierSelect.addEventListener("change", async () => {
       recipe.multiplier = normalizeMultiplier(multiplierSelect.value);
       await persistState();
