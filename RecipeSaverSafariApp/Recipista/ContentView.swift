@@ -921,6 +921,7 @@ struct ContentView: View {
     @State private var recipeAddMode: RecipeAddMode?
     @State private var isEditingShoppingList = false
     @State private var showsStartupAd = false
+    @State private var collapsedShoppingCategories: Set<String> = []
     @StateObject private var store = RecipistaStore()
 
     var body: some View {
@@ -928,9 +929,9 @@ struct ContentView: View {
             NavigationStack {
                 VStack(spacing: 0) {
                     appHeader
-                        .padding(.horizontal, 16)
-                        .padding(.top, 12)
-                        .padding(.bottom, 8)
+                        .padding(.horizontal, 20)
+                        .padding(.top, 22)
+                        .padding(.bottom, 14)
                         .frame(maxWidth: .infinity)
                         .background(Color.recipistaBackground.ignoresSafeArea(edges: .top))
                         .zIndex(2)
@@ -938,7 +939,7 @@ struct ContentView: View {
                     ScrollView {
                         appShoppingList
                             .padding(.horizontal, 16)
-                            .padding(.bottom, 22)
+                            .padding(.bottom, 18)
                     }
                 }
                 .background(Color.recipistaBackground.ignoresSafeArea())
@@ -985,7 +986,7 @@ struct ContentView: View {
     private var appHeader: some View {
         HStack(alignment: .center) {
             Text("Recipista")
-                .font(.system(size: 32, weight: .heavy, design: .rounded))
+                .font(.system(size: 39, weight: .heavy, design: .rounded))
                 .foregroundStyle(Color.recipistaGreen)
             Spacer()
             Menu {
@@ -1001,44 +1002,29 @@ struct ContentView: View {
                 }
             } label: {
                 Image(systemName: "plus")
-                    .font(.system(size: 18, weight: .bold))
+                    .font(.system(size: 27, weight: .semibold))
                     .foregroundStyle(Color.recipistaButtonForeground)
-                    .frame(width: 34, height: 34)
+                    .frame(width: 56, height: 56)
                     .background(Color.recipistaButtonGreen, in: Circle())
+                    .shadow(color: Color.recipistaButtonGreen.opacity(0.18), radius: 8, y: 4)
             }
         }
         .padding(.top, 2)
     }
 
     private var appShoppingList: some View {
-        LazyVStack(alignment: .leading, spacing: 12, pinnedViews: [.sectionHeaders]) {
-            Section {
-                savedRecipeContent
-            } header: {
-                pinnedPanelHeader {
-                    savedRecipeHeader
-                }
-            }
-
-            Divider()
-
-            Section {
-                shoppingPrimaryContent
-            } header: {
-                pinnedPanelHeader {
-                    shoppingListHeader
-                }
-            }
+        LazyVStack(alignment: .leading, spacing: 18, pinnedViews: [.sectionHeaders]) {
+            savedRecipesCard
+            shoppingListCard
 
             if !isEditingShoppingList && !store.shoppingItems.isEmpty {
                 NativeAdSlotView(adUnitID: AdConfiguration.appShoppingNativeAdUnitID)
-                    .padding(.top, 12)
                     .padding(.bottom, store.doneShoppingItems.isEmpty ? 0 : 2)
             }
 
             if !isEditingShoppingList && !store.doneShoppingItems.isEmpty {
                 Section {
-                    shoppingGroups(for: store.doneShoppingItems)
+                    shoppingCategoryGroups(for: store.doneShoppingItems)
                 } header: {
                     pinnedPanelHeader {
                         checkedListHeader
@@ -1050,18 +1036,123 @@ struct ContentView: View {
                 Text(store.statusMessage)
                     .font(.caption)
                     .foregroundStyle(.secondary)
-                    .padding(.top, 8)
             }
         }
         .frame(maxWidth: .infinity, minHeight: UIScreen.main.bounds.height * 0.64, alignment: .topLeading)
-        .padding(16)
-        .background(Color.recipistaPanel, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
     }
 
     private func pinnedPanelHeader<Content: View>(@ViewBuilder content: () -> Content) -> some View {
         content()
             .padding(.vertical, 8)
             .background(Color.recipistaPanel)
+    }
+
+    private var savedRecipesCard: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            HStack(alignment: .top, spacing: 14) {
+                CategoryIconBubble(symbol: "bookmark.fill", color: Color.recipistaGreen)
+
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("保存レシピ")
+                        .font(.title2.weight(.heavy))
+                        .foregroundStyle(Color.recipistaGreen)
+                    Text("お気に入りのレシピをすぐに確認")
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(.secondary)
+                }
+
+                Spacer()
+
+                Button {
+                    withAnimation(.snappy) {
+                        store.recipesExpanded.toggle()
+                    }
+                } label: {
+                    HStack(spacing: 8) {
+                        Text(store.recipesExpanded ? "閉じる" : "すべて見る")
+                            .font(.subheadline.weight(.heavy))
+                        Image(systemName: "chevron.right")
+                            .font(.headline.weight(.bold))
+                            .rotationEffect(.degrees(store.recipesExpanded ? 90 : 0))
+                    }
+                    .foregroundStyle(Color.recipistaGreen)
+                }
+                .buttonStyle(.plain)
+            }
+
+            savedRecipeContent
+        }
+        .padding(16)
+        .background(Color.recipistaCard, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+        .overlay {
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                .stroke(Color.recipistaLine)
+        }
+    }
+
+    private var shoppingListCard: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            HStack(alignment: .center, spacing: 14) {
+                CategoryIconBubble(symbol: "cart.fill", color: Color.recipistaGreen)
+
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("買い物リスト")
+                        .font(.title2.weight(.heavy))
+                        .foregroundStyle(Color.recipistaGreen)
+                    Text("必要な食材をまとめてチェック")
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(.secondary)
+                }
+
+                Spacer()
+
+                if !store.shoppingItems.isEmpty {
+                    ShareLink(item: store.shoppingShareText) {
+                        Image(systemName: "square.and.arrow.up")
+                            .font(.system(size: 20, weight: .semibold))
+                            .frame(width: 46, height: 46)
+                    }
+                    .buttonStyle(.plain)
+                    .foregroundStyle(Color.recipistaGreen)
+                    .background(Color.recipistaCard, in: Circle())
+                    .overlay {
+                        Circle().stroke(Color.recipistaLine)
+                    }
+
+                    Menu {
+                        Button {
+                            isEditingShoppingList.toggle()
+                        } label: {
+                            Label(isEditingShoppingList ? "編集を完了" : "材料を編集", systemImage: isEditingShoppingList ? "checkmark" : "pencil")
+                        }
+                        Button {
+                            store.clearDone()
+                        } label: {
+                            Label("すべてチェック解除", systemImage: "checkmark.square")
+                        }
+                        .disabled(store.doneShoppingItems.isEmpty)
+                    } label: {
+                        Image(systemName: "ellipsis")
+                            .font(.system(size: 20, weight: .heavy))
+                            .frame(width: 46, height: 46)
+                    }
+                    .buttonStyle(.plain)
+                    .foregroundStyle(Color.recipistaGreen)
+                    .background(Color.recipistaCard, in: Circle())
+                    .overlay {
+                        Circle().stroke(Color.recipistaLine)
+                    }
+                }
+            }
+
+            shoppingPrimaryContent
+        }
+        .padding(16)
+        .background(Color.recipistaCard, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+        .overlay {
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                .stroke(Color.recipistaLine)
+        }
     }
 
     private var shoppingListHeader: some View {
@@ -1131,7 +1222,7 @@ struct ContentView: View {
         } else if isEditingShoppingList {
             ShoppingEditListView(store: store)
         } else {
-            shoppingGroups(for: store.activeShoppingItems)
+            shoppingCategoryGroups(for: store.activeShoppingItems)
         }
     }
 
@@ -1241,7 +1332,7 @@ struct ContentView: View {
             }
         } else {
             ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: 10) {
+                HStack(spacing: 18) {
                     ForEach(store.recipes.filter { store.selectedRecipeIds.contains($0.id) }) { recipe in
                         AppSelectedRecipeChip(
                             recipe: recipe,
@@ -1290,55 +1381,70 @@ struct ContentView: View {
     }
 
     @ViewBuilder
-    private func shoppingGroups(for items: [ShoppingIngredient]) -> some View {
-        ForEach(store.availableCategories, id: \.self) { category in
+    private func shoppingCategoryGroups(for items: [ShoppingIngredient]) -> some View {
+        ForEach(Array(store.availableCategories), id: \.self) { (category: String) in
             let categoryItems = items.filter { $0.category == category }
             if !categoryItems.isEmpty {
-                HStack {
-                    Text(category)
-                        .font(.system(size: store.textSize.categorySize, weight: .bold))
-                        .foregroundStyle(Color.recipistaGreen)
-                    Spacer()
-                    if category == "調味料" && categoryItems.contains(where: { store.shoppingDone[$0.key] != true }) {
-                        Button {
-                            store.checkAllSeasonings()
-                        } label: {
-                            Text("すべてチェック")
-                                .frame(height: 28)
-                                .padding(.horizontal, 9)
+                let isCollapsed = collapsedShoppingCategories.contains(category)
+                VStack(spacing: 0) {
+                    Button {
+                        withAnimation(.snappy) {
+                            if isCollapsed {
+                                collapsedShoppingCategories.remove(category)
+                            } else {
+                                collapsedShoppingCategories.insert(category)
+                            }
                         }
-                        .font(.caption2.weight(.bold))
-                        .buttonStyle(.plain)
-                        .foregroundStyle(Color.recipistaGreen)
-                        .overlay {
-                            RoundedRectangle(cornerRadius: 8, style: .continuous)
-                                .stroke(Color.recipistaLine)
+                    } label: {
+                        HStack(spacing: 12) {
+                            CategoryIllustration(category: category)
+                            Text(category)
+                                .font(.system(size: store.textSize.categorySize, weight: .heavy))
+                                .foregroundStyle(.primary)
+                            Spacer()
+                            Text("\(categoryItems.count)件")
+                                .font(.subheadline.weight(.bold))
+                                .foregroundStyle(.secondary)
+                            Image(systemName: "chevron.up")
+                                .font(.headline.weight(.bold))
+                                .foregroundStyle(Color.recipistaGreen)
+                                .rotationEffect(.degrees(isCollapsed ? 180 : 0))
                         }
+                        .padding(.horizontal, 14)
+                        .padding(.vertical, 14)
                     }
-                }
-                .padding(.top, 16)
-                .padding(.bottom, 3)
+                    .buttonStyle(.plain)
 
-                ForEach(categoryItems) { item in
-                    if isEditingShoppingList {
-                        AppShoppingEditRow(
-                            item: store.editingItem(for: item),
-                            categories: store.availableCategories,
-                            textSize: store.textSize,
-                            onDelete: { store.deleteShoppingItem(key: item.key) }
-                        ) { updated, original in
-                            store.updateShoppingItem(updated, original: original)
+                    if !isCollapsed {
+                        Divider()
+                        ForEach(categoryItems) { item in
+                            if isEditingShoppingList {
+                                AppShoppingEditRow(
+                                    item: store.editingItem(for: item),
+                                    categories: store.availableCategories,
+                                    textSize: store.textSize,
+                                    onDelete: { store.deleteShoppingItem(key: item.key) }
+                                ) { updated, original in
+                                    store.updateShoppingItem(updated, original: original)
+                                }
+                            } else {
+                                AppShoppingRow(
+                                    item: item,
+                                    isDone: store.shoppingDone[item.key] == true,
+                                    textSize: store.textSize,
+                                    onToggle: { store.toggleDone(item) }
+                                )
+                            }
+                            if item.id != categoryItems.last?.id { Divider().padding(.leading, 54) }
                         }
-                    } else {
-                        AppShoppingRow(
-                            item: item,
-                            isDone: store.shoppingDone[item.key] == true,
-                            textSize: store.textSize,
-                            onToggle: { store.toggleDone(item) }
-                        )
                     }
-                    Divider()
                 }
+                .background(Color.recipistaCard, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                .overlay {
+                    RoundedRectangle(cornerRadius: 14, style: .continuous)
+                        .stroke(Color.recipistaLine)
+                }
+                .padding(.vertical, 6)
             }
         }
     }
@@ -1886,51 +1992,105 @@ private struct AppRecipeListRow: View {
     }
 }
 
+private struct CategoryIconBubble: View {
+    let symbol: String
+    let color: Color
+
+    var body: some View {
+        Image(systemName: symbol)
+            .font(.system(size: 24, weight: .bold))
+            .foregroundStyle(color)
+            .frame(width: 58, height: 58)
+            .background(color.opacity(0.10), in: Circle())
+    }
+}
+
+private struct CategoryIllustration: View {
+    let category: String
+
+    private var symbol: String {
+        switch category {
+        case "肉・魚": "fish.fill"
+        case "野菜": "leaf.fill"
+        case "卵・乳製品": "oval.fill"
+        case "調味料": "waterbottle.fill"
+        default: "basket.fill"
+        }
+    }
+
+    private var color: Color {
+        switch category {
+        case "肉・魚": return Color(red: 0.87, green: 0.20, blue: 0.24)
+        case "野菜": return Color(red: 0.25, green: 0.62, blue: 0.18)
+        case "卵・乳製品": return Color(red: 0.95, green: 0.61, blue: 0.00)
+        case "調味料": return Color(red: 0.25, green: 0.53, blue: 0.78)
+        default: return Color.recipistaGreen
+        }
+    }
+
+    var body: some View {
+        Image(systemName: symbol)
+            .font(.system(size: 27, weight: .bold))
+            .foregroundStyle(color)
+            .frame(width: 42, height: 42)
+    }
+}
+
 private struct AppSelectedRecipeChip: View {
     let recipe: StoredRecipe
     let onToggle: () -> Void
     let onMultiplierChange: (Double) -> Void
 
     var body: some View {
-        ZStack(alignment: .topTrailing) {
-            RecipeThumb(recipe: recipe, size: 62)
+        VStack(alignment: .leading, spacing: 8) {
+            ZStack(alignment: .topTrailing) {
+                RecipeThumb(recipe: recipe, size: 96)
 
-            Button(action: onToggle) {
-                Image(systemName: "checkmark")
-                    .font(.caption2.weight(.black))
-                    .foregroundStyle(Color.recipistaButtonForeground)
-                    .frame(width: 22, height: 22)
-                    .background(Color.recipistaButtonGreen, in: Circle())
-                    .overlay {
-                        Circle().stroke(.white.opacity(0.9), lineWidth: 1.5)
-                    }
-            }
-            .offset(x: 9, y: -9)
-
-            Menu {
-                ForEach(portionMultiplierOptions(for: recipe), id: \.self) { value in
-                    Button(recipePortionLabel(recipe: recipe, multiplier: value)) {
-                        onMultiplierChange(value)
-                    }
+                Button(action: onToggle) {
+                    Image(systemName: "checkmark")
+                        .font(.system(size: 18, weight: .black))
+                        .foregroundStyle(Color.recipistaButtonForeground)
+                        .frame(width: 34, height: 34)
+                        .background(Color.recipistaButtonGreen, in: Circle())
+                        .overlay {
+                            Circle().stroke(.white.opacity(0.9), lineWidth: 1.5)
+                        }
                 }
-            } label: {
-                Text(recipeCompactPortionLabel(recipe))
-                    .font(.system(size: 9, weight: .black))
-                    .foregroundStyle(Color.recipistaButtonForeground)
-                    .minimumScaleFactor(0.65)
-                    .lineLimit(1)
-                    .monospacedDigit()
-                    .frame(width: 30, height: 20)
-                    .background(Color.recipistaButtonGreen.opacity(0.92), in: Capsule())
-                    .overlay {
-                        Capsule().stroke(.white.opacity(0.9), lineWidth: 1.2)
+                .offset(x: 10, y: -10)
+
+                Menu {
+                    ForEach(portionMultiplierOptions(for: recipe), id: \.self) { value in
+                        Button(recipePortionLabel(recipe: recipe, multiplier: value)) {
+                            onMultiplierChange(value)
+                        }
                     }
+                } label: {
+                    Text(recipeCompactPortionLabel(recipe))
+                        .font(.system(size: 15, weight: .black))
+                        .foregroundStyle(Color.recipistaButtonForeground)
+                        .minimumScaleFactor(0.65)
+                        .lineLimit(1)
+                        .monospacedDigit()
+                        .padding(.horizontal, 8)
+                        .frame(height: 28)
+                        .background(Color.recipistaButtonGreen.opacity(0.95), in: Capsule())
+                        .overlay {
+                            Capsule().stroke(.white.opacity(0.9), lineWidth: 1.2)
+                        }
+                }
+                .buttonStyle(.plain)
+                .animation(nil, value: recipe.multiplier ?? 1)
+                .offset(x: 4, y: 66)
             }
-            .buttonStyle(.plain)
-            .animation(nil, value: recipe.multiplier ?? 1)
-            .offset(x: 1, y: 41)
+            .frame(width: 108, height: 104)
+
+            Text(recipe.name)
+                .font(.caption.weight(.heavy))
+                .foregroundStyle(.primary)
+                .lineLimit(2)
+                .frame(width: 108, alignment: .leading)
         }
-        .frame(width: 72, height: 72)
+        .frame(width: 108, alignment: .leading)
     }
 }
 
@@ -1956,7 +2116,7 @@ private struct RecipeThumb: View {
             }
         }
         .frame(width: size, height: size)
-        .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+        .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
     }
 }
 
@@ -2000,10 +2160,10 @@ private struct AppShoppingRow: View {
     let onToggle: () -> Void
 
     var body: some View {
-        HStack(spacing: 8) {
+        HStack(spacing: 12) {
             Button(action: onToggle) {
                 Image(systemName: isDone ? "checkmark.square.fill" : "square")
-                    .font(.system(size: 19, weight: .semibold))
+                    .font(.system(size: 24, weight: .semibold))
                     .foregroundStyle(isDone ? Color.recipistaGreen : Color.recipistaLine)
             }
             .buttonStyle(.plain)
@@ -2018,11 +2178,12 @@ private struct AppShoppingRow: View {
                 .font(.system(size: textSize.bodySize, weight: .bold))
                 .foregroundStyle(.secondary)
                 .strikethrough(isDone)
-                .frame(width: 76, alignment: .trailing)
+                .frame(width: 82, alignment: .trailing)
 
             RecipeSourceMenu(ingredientName: item.name, sources: item.recipeSources)
         }
-        .padding(.vertical, 4)
+        .padding(.horizontal, 14)
+        .padding(.vertical, 10)
     }
 }
 
@@ -2803,6 +2964,13 @@ private extension Color {
             traits.userInterfaceStyle == .dark
                 ? UIColor(red: 0.095, green: 0.110, blue: 0.098, alpha: 1)
                 : UIColor(red: 0.984, green: 0.980, blue: 0.969, alpha: 1)
+        }
+    )
+    static let recipistaCard = Color(
+        UIColor { traits in
+            traits.userInterfaceStyle == .dark
+                ? UIColor(red: 0.095, green: 0.110, blue: 0.098, alpha: 1)
+                : UIColor.white
         }
     )
     static let recipistaLine = Color(
