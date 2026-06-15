@@ -228,6 +228,7 @@ private final class RecipistaStore: ObservableObject {
     private let selectedKey = "recipista.selectedRecipeIds"
     private let doneKey = "recipista.shoppingDone"
     private let preferencesKey = "recipista.preferences"
+    private let categoryOverrideResetVersion = 1
 
     init() {
         load()
@@ -419,6 +420,11 @@ private final class RecipistaStore: ObservableObject {
         save()
     }
 
+    func resetCategoryOverrides() {
+        categoryOverrides = defaultCategoryOverrides
+        save()
+    }
+
     func addQuantityTerm(_ value: String) {
         let term = value.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !term.isEmpty else { return }
@@ -595,7 +601,10 @@ private final class RecipistaStore: ObservableObject {
             if let unit = preferences["unitDisplay"] as? String {
                 unitDisplay = unit
             }
-            if let overrides = preferences["categoryOverrides"] as? [String: String] {
+            let resetVersion = preferences["categoryOverrideResetVersion"] as? Int ?? 0
+            if resetVersion < categoryOverrideResetVersion {
+                categoryOverrides = defaultCategoryOverrides
+            } else if let overrides = preferences["categoryOverrides"] as? [String: String] {
                 categoryOverrides = defaultCategoryOverrides.merging(overrides) { _, saved in saved }
             } else {
                 categoryOverrides = defaultCategoryOverrides
@@ -621,6 +630,7 @@ private final class RecipistaStore: ObservableObject {
         } else {
             categoryOverrides = defaultCategoryOverrides
         }
+        save()
     }
 
     private func save() {
@@ -633,6 +643,7 @@ private final class RecipistaStore: ObservableObject {
         defaults.set([
             "unitDisplay": unitDisplay,
             "categoryOverrides": categoryOverrides,
+            "categoryOverrideResetVersion": categoryOverrideResetVersion,
             "quantityTerms": quantityTerms,
             "categories": categories,
             "textSize": textSize.rawValue
@@ -910,19 +921,20 @@ struct ContentView: View {
     var body: some View {
         TabView {
             NavigationStack {
-                ScrollView {
-                    LazyVStack(alignment: .leading, spacing: 14, pinnedViews: [.sectionHeaders]) {
-                        Section {
-                            appShoppingList
-                        } header: {
-                            appHeader
-                                .padding(.top, 12)
-                                .padding(.bottom, 6)
-                                .background(Color.recipistaBackground)
-                        }
+                VStack(spacing: 0) {
+                    appHeader
+                        .padding(.horizontal, 16)
+                        .padding(.top, 12)
+                        .padding(.bottom, 8)
+                        .frame(maxWidth: .infinity)
+                        .background(Color.recipistaBackground.ignoresSafeArea(edges: .top))
+                        .zIndex(2)
+
+                    ScrollView {
+                        appShoppingList
+                            .padding(.horizontal, 16)
+                            .padding(.bottom, 22)
                     }
-                    .padding(.horizontal, 16)
-                    .padding(.bottom, 22)
                 }
                 .background(Color.recipistaBackground.ignoresSafeArea())
                 .navigationTitle("")
@@ -971,6 +983,17 @@ struct ContentView: View {
                 .font(.system(size: 32, weight: .heavy, design: .rounded))
                 .foregroundStyle(Color.recipistaGreen)
             Spacer()
+            NavigationLink {
+                CategorySettingsView(store: store)
+            } label: {
+                Image(systemName: "line.3.horizontal.decrease")
+                    .font(.system(size: 17, weight: .bold))
+                    .foregroundStyle(.white)
+                    .frame(width: 34, height: 34)
+                    .background(Color.recipistaGreen, in: Circle())
+            }
+            .buttonStyle(.plain)
+
             Menu {
                 Button {
                     recipeAddMode = .link
@@ -994,23 +1017,57 @@ struct ContentView: View {
     }
 
     private var appShoppingList: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            savedRecipeSelector
+        LazyVStack(alignment: .leading, spacing: 12, pinnedViews: [.sectionHeaders]) {
+            Section {
+                savedRecipeContent
+            } header: {
+                pinnedPanelHeader {
+                    savedRecipeHeader
+                }
+            }
+
             Divider()
 
-            LazyVStack(alignment: .leading, spacing: 0, pinnedViews: [.sectionHeaders]) {
-                Section {
-                    shoppingListContent
-                } header: {
+            Section {
+                shoppingPrimaryContent
+            } header: {
+                pinnedPanelHeader {
                     shoppingListHeader
-                        .padding(.vertical, 8)
-                        .background(Color.recipistaPanel)
                 }
+            }
+
+            if !isEditingShoppingList && !store.shoppingItems.isEmpty {
+                NativeAdSlotView(adUnitID: AdConfiguration.appShoppingNativeAdUnitID)
+                    .padding(.top, 12)
+                    .padding(.bottom, store.doneShoppingItems.isEmpty ? 0 : 2)
+            }
+
+            if !isEditingShoppingList && !store.doneShoppingItems.isEmpty {
+                Section {
+                    shoppingGroups(for: store.doneShoppingItems)
+                } header: {
+                    pinnedPanelHeader {
+                        checkedListHeader
+                    }
+                }
+            }
+
+            if !store.statusMessage.isEmpty {
+                Text(store.statusMessage)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .padding(.top, 8)
             }
         }
         .frame(maxWidth: .infinity, minHeight: UIScreen.main.bounds.height * 0.64, alignment: .topLeading)
         .padding(16)
         .background(Color.recipistaPanel, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+    }
+
+    private func pinnedPanelHeader<Content: View>(@ViewBuilder content: () -> Content) -> some View {
+        content()
+            .padding(.vertical, 8)
+            .background(Color.recipistaPanel)
     }
 
     private var shoppingListHeader: some View {
@@ -1066,7 +1123,7 @@ struct ContentView: View {
     }
 
     @ViewBuilder
-    private var shoppingListContent: some View {
+    private var shoppingPrimaryContent: some View {
         if store.shoppingItems.isEmpty {
             Text("保存済みレシピにチェックを入れると材料がまとまります。")
                 .font(.footnote)
@@ -1080,37 +1137,7 @@ struct ContentView: View {
         } else if isEditingShoppingList {
             ShoppingEditListView(store: store)
         } else {
-            LazyVStack(alignment: .leading, spacing: 0, pinnedViews: [.sectionHeaders]) {
-                shoppingGroups(for: store.activeShoppingItems)
-
-                if !store.doneShoppingItems.isEmpty {
-                    NativeAdSlotView(adUnitID: AdConfiguration.appShoppingNativeAdUnitID)
-                        .padding(.top, 12)
-                        .padding(.bottom, 2)
-
-                    Section {
-                        shoppingGroups(for: store.doneShoppingItems)
-                    } header: {
-                        Text("チェック済み")
-                            .font(.title3.weight(.heavy))
-                            .foregroundStyle(.secondary)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                            .padding(.top, 14)
-                            .padding(.bottom, 4)
-                            .background(Color.recipistaPanel)
-                            .overlay(alignment: .top) {
-                                Divider()
-                            }
-                        }
-                }
-            }
-        }
-
-        if !store.statusMessage.isEmpty {
-            Text(store.statusMessage)
-                .font(.caption)
-                .foregroundStyle(.secondary)
-                .padding(.top, 8)
+            shoppingGroups(for: store.activeShoppingItems)
         }
     }
 
@@ -1187,54 +1214,49 @@ struct ContentView: View {
         .scrollContentBackground(.hidden)
     }
 
-    private var savedRecipeSelector: some View {
-        LazyVStack(alignment: .leading, spacing: 10, pinnedViews: [.sectionHeaders]) {
-            Section {
-                if store.recipes.isEmpty {
-                    Text("まだ保存されたレシピはありません。")
-                        .font(.footnote)
-                        .foregroundStyle(.secondary)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .padding(12)
-                        .overlay {
-                            RoundedRectangle(cornerRadius: 8, style: .continuous)
-                                .stroke(Color.recipistaLine, style: StrokeStyle(lineWidth: 1, dash: [4]))
+    @ViewBuilder
+    private var savedRecipeContent: some View {
+        if store.recipes.isEmpty {
+            Text("まだ保存されたレシピはありません。")
+                .font(.footnote)
+                .foregroundStyle(.secondary)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(12)
+                .overlay {
+                    RoundedRectangle(cornerRadius: 8, style: .continuous)
+                        .stroke(Color.recipistaLine, style: StrokeStyle(lineWidth: 1, dash: [4]))
+                }
+        } else if store.recipesExpanded {
+            VStack(spacing: 0) {
+                ForEach(store.recipes) { recipe in
+                    AppRecipeListRow(
+                        recipe: recipe,
+                        isSelected: store.isSelected(recipe),
+                        onToggle: {
+                            store.toggleRecipe(recipe)
+                        },
+                        onMultiplierChange: { value in
+                            store.updateMultiplier(for: recipe, value: value)
+                        },
+                        onDelete: {
+                            store.deleteRecipe(recipe)
                         }
-                } else if store.recipesExpanded {
-                    VStack(spacing: 0) {
-                        ForEach(store.recipes) { recipe in
-                            AppRecipeListRow(
-                                recipe: recipe,
-                                isSelected: store.isSelected(recipe),
-                                onToggle: {
-                                store.toggleRecipe(recipe)
-                                },
-                                onMultiplierChange: { value in
-                                    store.updateMultiplier(for: recipe, value: value)
-                                },
-                                onDelete: {
-                                    store.deleteRecipe(recipe)
-                                }
-                            )
-                            if recipe.id != store.recipes.last?.id { Divider() }
-                        }
-                    }
-                } else {
-                    ScrollView(.horizontal, showsIndicators: false) {
-                        HStack(spacing: 10) {
-                            ForEach(store.recipes.filter { store.selectedRecipeIds.contains($0.id) }) { recipe in
-                                AppSelectedRecipeChip(
-                                    recipe: recipe,
-                                    onToggle: { store.toggleRecipe(recipe) },
-                                    onMultiplierChange: { store.updateMultiplier(for: recipe, value: $0) }
-                                )
-                            }
-                        }
-                        .padding(.vertical, 4)
+                    )
+                    if recipe.id != store.recipes.last?.id { Divider() }
+                }
+            }
+        } else {
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 10) {
+                    ForEach(store.recipes.filter { store.selectedRecipeIds.contains($0.id) }) { recipe in
+                        AppSelectedRecipeChip(
+                            recipe: recipe,
+                            onToggle: { store.toggleRecipe(recipe) },
+                            onMultiplierChange: { store.updateMultiplier(for: recipe, value: $0) }
+                        )
                     }
                 }
-            } header: {
-                savedRecipeHeader
+                .padding(.vertical, 4)
             }
         }
     }
@@ -1261,6 +1283,16 @@ struct ContentView: View {
         }
         .padding(.vertical, 4)
         .background(Color.recipistaPanel)
+    }
+
+    private var checkedListHeader: some View {
+        Text("チェック済み")
+            .font(.title3.weight(.heavy))
+            .foregroundStyle(.secondary)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .overlay(alignment: .top) {
+                Divider()
+            }
     }
 
     @ViewBuilder
@@ -1418,10 +1450,8 @@ private struct CategorySettingsView: View {
         .navigationTitle("材料カテゴリー")
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
-            ToolbarItem(placement: .topBarLeading) {
+            ToolbarItemGroup(placement: .topBarTrailing) {
                 EditButton()
-            }
-            ToolbarItem(placement: .topBarTrailing) {
                 Button {
                     showingAdd = true
                 } label: {
@@ -1467,6 +1497,7 @@ private struct CategoryOverrideSettingsView: View {
     @State private var ingredientName = ""
     @State private var category = "その他"
     @State private var showingAdd = false
+    @State private var showingResetConfirmation = false
 
     var body: some View {
         Form {
@@ -1494,6 +1525,12 @@ private struct CategoryOverrideSettingsView: View {
         .navigationTitle("材料分類先")
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
+            ToolbarItem(placement: .topBarLeading) {
+                Button("リセット") {
+                    showingResetConfirmation = true
+                }
+                .foregroundStyle(.red)
+            }
             ToolbarItem(placement: .topBarTrailing) {
                 Button {
                     showingAdd = true
@@ -1536,6 +1573,14 @@ private struct CategoryOverrideSettingsView: View {
                 }
             }
             .presentationDetents([.medium])
+        }
+        .confirmationDialog("材料分類先をリセットしますか？", isPresented: $showingResetConfirmation, titleVisibility: .visible) {
+            Button("リセット", role: .destructive) {
+                store.resetCategoryOverrides()
+            }
+            Button("キャンセル", role: .cancel) {}
+        } message: {
+            Text("学習された材料分類先を標準設定に戻します。保存レシピは削除されません。")
         }
         .scrollContentBackground(.hidden)
         .background(Color.recipistaBackground.ignoresSafeArea())
@@ -1983,12 +2028,14 @@ private struct RecipeSourceMenu: View {
         .sheet(isPresented: $showsSources) {
             NavigationStack {
                 List {
-                    Section {
-                        Text(ingredientName)
-                            .font(.headline.weight(.heavy))
-                            .foregroundStyle(Color.recipistaGreen)
-                            .listRowSeparator(.hidden)
-                    }
+                    Text(ingredientName)
+                        .font(.headline.weight(.heavy))
+                        .foregroundStyle(Color.recipistaGreen)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .listRowInsets(EdgeInsets(top: 4, leading: 0, bottom: 6, trailing: 0))
+                        .listRowSeparator(.hidden)
+                        .listRowBackground(Color.clear)
+
                     ForEach(sources) { source in
                         HStack(spacing: 10) {
                             RecipeSourceThumb(source: source)
@@ -2013,7 +2060,7 @@ private struct RecipeSourceMenu: View {
                         }
                     }
                 }
-                .navigationTitle(ingredientName)
+                .navigationTitle("内訳")
                 .navigationBarTitleDisplayMode(.inline)
                 .toolbar {
                     ToolbarItem(placement: .confirmationAction) {

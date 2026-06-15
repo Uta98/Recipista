@@ -14,10 +14,13 @@ final class AppOpenAdManager: NSObject {
     func loadAndPresent(adUnitID: String) {
         guard !isLoading, !isShowing else { return }
         isLoading = true
-        AppOpenAd.load(with: adUnitID, request: Request()) { [weak self] ad, _ in
+        AppOpenAd.load(with: adUnitID, request: Request()) { [weak self] ad, error in
             guard let self else { return }
             Task { @MainActor in
                 self.isLoading = false
+                if let error {
+                    print("Recipista app open ad failed: \(error.localizedDescription)")
+                }
                 self.appOpenAd = ad
                 self.presentIfReady()
             }
@@ -25,7 +28,13 @@ final class AppOpenAdManager: NSObject {
     }
 
     private func presentIfReady() {
-        guard let appOpenAd, let root = UIApplication.shared.recipistaTopViewController else { return }
+        guard let appOpenAd else { return }
+        guard let root = UIApplication.shared.recipistaTopViewController else {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                self.presentIfReady()
+            }
+            return
+        }
         do {
             try appOpenAd.canPresent(from: root)
         } catch {
@@ -61,12 +70,21 @@ final class NativeAdModel: NSObject, ObservableObject, NativeAdLoaderDelegate {
     @Published var nativeAd: NativeAd?
     @Published var didFail = false
     private var adLoader: AdLoader?
+    private var retryCount = 0
 
     func load(adUnitID: String) {
         guard nativeAd == nil, adLoader?.isLoading != true else { return }
+        guard let rootViewController = UIApplication.shared.recipistaTopViewController else {
+            guard retryCount < 5 else { return }
+            retryCount += 1
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {
+                self.load(adUnitID: adUnitID)
+            }
+            return
+        }
         adLoader = AdLoader(
             adUnitID: adUnitID,
-            rootViewController: UIApplication.shared.recipistaTopViewController,
+            rootViewController: rootViewController,
             adTypes: [.native],
             options: nil
         )
@@ -78,9 +96,11 @@ final class NativeAdModel: NSObject, ObservableObject, NativeAdLoaderDelegate {
         nativeAd.rootViewController = UIApplication.shared.recipistaTopViewController
         self.nativeAd = nativeAd
         didFail = false
+        retryCount = 0
     }
 
     func adLoader(_ adLoader: AdLoader, didFailToReceiveAdWithError error: Error) {
+        print("Recipista native ad failed: \(error.localizedDescription)")
         didFail = true
     }
 }
