@@ -56,12 +56,33 @@ function normalizeIngredientLine(value) {
   return text;
 }
 
+function normalizeIngredientItem(value) {
+  if (!value) return null;
+  if (typeof value === "object") {
+    const name = normalizeIngredientLine(value.name || value.text || value.item || "");
+    const quantityText = normalizeIngredientLine(value.quantityText || value.quantity || value.amount || value.requiredQuantity || "");
+    if (name && quantityText && name !== quantityText) {
+      return { name, quantityText };
+    }
+    const joined = normalizeIngredientLine([name, quantityText].filter(Boolean).join(" "));
+    return joined || null;
+  }
+  return normalizeIngredientLine(value) || null;
+}
+
+function ingredientText(value) {
+  if (value && typeof value === "object") {
+    return normalizeIngredientLine(`${value.name || ""} ${value.quantityText || value.quantity || ""}`);
+  }
+  return normalizeIngredientLine(value);
+}
+
 function uniqueIngredientLines(lines) {
   const seen = new Set();
   const values = [];
 
-  for (const line of lines.map(normalizeIngredientLine).filter(Boolean)) {
-    const key = line.replace(/\s/g, "");
+  for (const line of lines.map(normalizeIngredientItem).filter(Boolean)) {
+    const key = ingredientText(line).replace(/\s/g, "");
     if (seen.has(key)) continue;
     seen.add(key);
     values.push(line);
@@ -169,6 +190,72 @@ function collectTextFromSelectors(selectors) {
   return values;
 }
 
+function firstDescendantText(element, selectors) {
+  for (const selector of selectors) {
+    const child = element.querySelector(selector);
+    const text = normalizeIngredientLine(child && child.textContent);
+    if (text) return text;
+  }
+  return "";
+}
+
+function ingredientFromElement(element) {
+  const name = firstDescendantText(element, [
+    '[itemprop="name"]',
+    '[class*="ingredient-name" i]',
+    '[class*="ingredient_name" i]',
+    '[class*="material-name" i]',
+    '[class*="material_name" i]',
+    '[class*="name" i]',
+    '[class*="材料名" i]'
+  ]);
+  const quantityText = firstDescendantText(element, [
+    '[itemprop="amount"]',
+    '[itemprop="quantity"]',
+    '[class*="ingredient-quantity" i]',
+    '[class*="ingredient_quantity" i]',
+    '[class*="ingredient-amount" i]',
+    '[class*="material-quantity" i]',
+    '[class*="material_quantity" i]',
+    '[class*="amount" i]',
+    '[class*="quantity" i]',
+    '[class*="分量" i]'
+  ]);
+
+  if (name && quantityText && name !== quantityText) {
+    return { name, quantityText };
+  }
+
+  const childTexts = Array.from(element.children)
+    .map((child) => normalizeIngredientLine(child.textContent))
+    .filter(Boolean);
+  const uniqueChildTexts = Array.from(new Set(childTexts));
+  if (uniqueChildTexts.length >= 2) {
+    return {
+      name: uniqueChildTexts[0],
+      quantityText: uniqueChildTexts.slice(1).join(" ")
+    };
+  }
+
+  return normalizeIngredientLine(element.textContent);
+}
+
+function collectIngredientsFromSelectors(selectors) {
+  const values = [];
+
+  for (const selector of selectors) {
+    for (const element of document.querySelectorAll(selector)) {
+      const item = normalizeIngredientItem(ingredientFromElement(element));
+      const text = ingredientText(item);
+      if (item && text && text.length <= 120) {
+        values.push(item);
+      }
+    }
+  }
+
+  return uniqueIngredientLines(values);
+}
+
 function firstImageUrl() {
   const selectors = [
     'meta[property="og:image"]',
@@ -212,7 +299,7 @@ function extractRecipeFromJsonLd(recipe) {
     imageUrl,
     yieldText: normalizeWhitespace(recipe.recipeYield),
     totalTime: normalizeWhitespace(recipe.totalTime),
-    ingredients: asArray(recipe.recipeIngredient).map(normalizeIngredientLine).filter(Boolean),
+    ingredients: asArray(recipe.recipeIngredient).map(normalizeIngredientItem).filter(Boolean),
     instructions: asArray(recipe.recipeInstructions).map(instructionText).map(normalizeWhitespace).filter(Boolean),
     extractedAt: new Date().toISOString(),
     extractionMethod: "json-ld"
@@ -238,9 +325,10 @@ function extractRecipeHeuristically() {
     '[class*="材料" i] li'
   ];
 
-  const ingredients = collectTextFromSelectors(selectors).filter((line) => {
-    const hasFoodAmount = /(\d|大さじ|小さじ|少々|適量|g|kg|ml|cc|個|本|枚|束|袋|缶|カップ)/i.test(line);
-    const looksLikeNav = /(ログイン|会員|広告|コメント|レビュー|ランキング|カテゴリ|保存|シェア)/.test(line);
+  const ingredients = collectIngredientsFromSelectors(selectors).filter((line) => {
+    const text = ingredientText(line);
+    const hasFoodAmount = /(\d|大さじ|小さじ|少々|適量|g|kg|ml|cc|個|本|枚|束|袋|缶|カップ)/i.test(text);
+    const looksLikeNav = /(ログイン|会員|広告|コメント|レビュー|ランキング|カテゴリ|保存|シェア)/.test(text);
     return hasFoodAmount && !looksLikeNav;
   }).slice(0, 80);
 

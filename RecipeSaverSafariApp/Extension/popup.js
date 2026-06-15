@@ -38,7 +38,8 @@ const categoryRules = [
   }
 ];
 
-const categoryOrder = ["肉・魚", "野菜", "卵・乳製品", "調味料", "その他"];
+const defaultCategoryOrder = ["肉・魚", "野菜", "卵・乳製品", "調味料", "その他"];
+let categoryOrder = [...defaultCategoryOrder];
 
 let state = {
   currentRecipe: null,
@@ -55,7 +56,8 @@ let state = {
   preferences: {
     unitDisplay: "spoons",
     categoryOverrides: {},
-    quantityTerms: defaultQuantityTerms
+    quantityTerms: defaultQuantityTerms,
+    categories: defaultCategoryOrder
   }
 };
 
@@ -721,34 +723,11 @@ function renderEditFields(recipe, force = false) {
     ingredients.filter((item) => item.category === category)
   ]);
 
-  const moveEditingIngredient = async (fromIndex, category) => {
-    const draft = editedRecipeDraft();
-    const ingredient = draft.ingredients[fromIndex];
-    if (!ingredient || !categoryOrder.includes(category)) return;
-    ingredient.category = category;
-    updateCategoryOverride(ingredient.name, category);
-    await persistState();
-    renderEditFields(draft, true);
-    renderRegistrationSheet();
-  };
-
   container.innerHTML = "";
   for (const [category, items] of grouped) {
     const group = document.createElement("section");
     group.className = "edit-category-group";
     group.dataset.category = category;
-    group.addEventListener("dragover", (event) => {
-      event.preventDefault();
-      group.classList.add("drag-over");
-    });
-    group.addEventListener("dragleave", () => {
-      group.classList.remove("drag-over");
-    });
-    group.addEventListener("drop", async (event) => {
-      event.preventDefault();
-      group.classList.remove("drag-over");
-      await moveEditingIngredient(Number(event.dataTransfer.getData("text/plain")), category);
-    });
 
     const title = document.createElement("p");
     title.className = "edit-category-title";
@@ -760,48 +739,6 @@ function renderEditFields(recipe, force = false) {
       row.className = "edit-ingredient-row";
       const ingredientIndex = ingredients.indexOf(item);
       row.dataset.ingredientIndex = String(ingredientIndex);
-
-      const handle = document.createElement("button");
-      handle.className = "edit-drag-handle";
-      handle.type = "button";
-      handle.draggable = true;
-      handle.title = "ドラッグしてカテゴリ移動";
-      handle.setAttribute("aria-label", "ドラッグしてカテゴリ移動");
-      handle.textContent = "☰";
-      handle.addEventListener("dragstart", (event) => {
-        event.dataTransfer.effectAllowed = "move";
-        event.dataTransfer.setData("text/plain", String(ingredientIndex));
-        row.classList.add("dragging");
-      });
-      handle.addEventListener("dragend", () => {
-        row.classList.remove("dragging");
-        document.querySelectorAll(".edit-category-group.drag-over").forEach((item) => item.classList.remove("drag-over"));
-      });
-      let pointerDragging = false;
-      const clearPointerDrag = () => {
-        pointerDragging = false;
-        row.classList.remove("dragging");
-        document.querySelectorAll(".edit-category-group.drag-over").forEach((item) => item.classList.remove("drag-over"));
-      };
-      handle.addEventListener("pointerdown", (event) => {
-        pointerDragging = true;
-        row.classList.add("dragging");
-        handle.setPointerCapture(event.pointerId);
-      });
-      handle.addEventListener("pointermove", (event) => {
-        if (!pointerDragging) return;
-        event.preventDefault();
-        document.querySelectorAll(".edit-category-group.drag-over").forEach((item) => item.classList.remove("drag-over"));
-        const target = document.elementFromPoint(event.clientX, event.clientY)?.closest(".edit-category-group");
-        if (target) target.classList.add("drag-over");
-      });
-      handle.addEventListener("pointerup", async (event) => {
-        if (!pointerDragging) return;
-        const target = document.elementFromPoint(event.clientX, event.clientY)?.closest(".edit-category-group");
-        clearPointerDrag();
-        if (target) await moveEditingIngredient(ingredientIndex, target.dataset.category);
-      });
-      handle.addEventListener("pointercancel", clearPointerDrag);
 
       const nameInput = document.createElement("input");
       nameInput.className = "edit-ingredient-name";
@@ -835,7 +772,7 @@ function renderEditFields(recipe, force = false) {
         renderRegistrationSheet();
       });
 
-      row.append(handle, nameInput, quantityInput, categorySelect);
+      row.append(nameInput, quantityInput, categorySelect);
       group.append(row);
     }
     container.append(group);
@@ -896,7 +833,7 @@ async function loadState() {
     [storageKeys.recipes]: [],
     [storageKeys.selectedRecipeIds]: [],
     [storageKeys.shoppingDone]: {},
-    [storageKeys.preferences]: { unitDisplay: "spoons", categoryOverrides: {}, quantityTerms: defaultQuantityTerms }
+    [storageKeys.preferences]: { unitDisplay: "spoons", categoryOverrides: {}, quantityTerms: defaultQuantityTerms, categories: defaultCategoryOrder }
   });
 
   state.recipes = items[storageKeys.recipes] || [];
@@ -906,9 +843,13 @@ async function loadState() {
     unitDisplay: "spoons",
     categoryOverrides: {},
     quantityTerms: defaultQuantityTerms,
+    categories: defaultCategoryOrder,
     ...(items[storageKeys.preferences] || {})
   };
   state.preferences.quantityTerms = quantityTerms();
+  categoryOrder = Array.isArray(state.preferences.categories) && state.preferences.categories.length > 0
+    ? [...state.preferences.categories]
+    : [...defaultCategoryOrder];
 }
 
 async function loadCurrentRecipe() {
@@ -998,6 +939,11 @@ async function saveCurrentRecipe() {
   state.registrationSaved = true;
   state.editingCurrentRecipe = false;
   render();
+  const toast = document.querySelector("#save-toast");
+  if (toast) {
+    toast.textContent = "Recipistaに登録しました";
+    toast.hidden = false;
+  }
   setTimeout(() => window.close(), 900);
 }
 
@@ -1061,7 +1007,7 @@ function renderRegistrationSheet() {
   previewList.hidden = state.editingCurrentRecipe;
   previewEmpty.hidden = items.length > 0 || state.editingCurrentRecipe;
   previewEmpty.textContent = isFailure
-    ? "材料を取得できませんでした。手入力で追加するか、別のレシピページで試してください。"
+    ? "材料を取得できませんでした。手入力するか、別のレシピページで試してください。"
     : "抽出された材料はありません。";
   noResultActions.hidden = !isFailure;
   failureAd.hidden = !isFailure;

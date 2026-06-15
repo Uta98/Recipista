@@ -1,6 +1,5 @@
 import SwiftUI
 import Foundation
-import UniformTypeIdentifiers
 #if canImport(WatchConnectivity)
 import WatchConnectivity
 #endif
@@ -263,6 +262,11 @@ private final class RecipistaStore: ObservableObject {
         save()
     }
 
+    func moveCategory(from source: IndexSet, to destination: Int) {
+        categories.move(fromOffsets: source, toOffset: destination)
+        save()
+    }
+
     var shoppingItems: [ShoppingIngredient] {
         let selected = recipes.filter { selectedRecipeIds.contains($0.id) }
         var groups: [String: AggregatedIngredient] = [:]
@@ -438,20 +442,26 @@ private final class RecipistaStore: ObservableObject {
         EditingShoppingIngredient(id: item.key, name: item.name, quantity: item.quantity, category: item.category)
     }
 
-    func updateShoppingItem(_ editing: EditingShoppingIngredient) {
+    func updateShoppingItem(_ editing: EditingShoppingIngredient, original: EditingShoppingIngredient? = nil) {
         let oldKey = editing.id
         let newName = editing.name.trimmingCharacters(in: .whitespacesAndNewlines)
         let newQuantity = editing.quantity.trimmingCharacters(in: .whitespacesAndNewlines)
         let newCategory = categories.contains(editing.category) ? editing.category : "その他"
         guard !newName.isEmpty else { return }
+        let shouldUpdateName = original.map { $0.name != newName } ?? true
+        let shouldUpdateQuantity = original.map { $0.quantity != newQuantity } ?? true
+        let shouldUpdateCategory = original.map { $0.category != newCategory } ?? true
 
         for recipeIndex in recipes.indices where selectedRecipeIds.contains(recipes[recipeIndex].id) {
             for ingredientIndex in recipes[recipeIndex].ingredients.indices {
                 let ingredient = recipes[recipeIndex].ingredients[ingredientIndex]
                 let parsed = Self.parseIngredient(ingredient.line, quantityTerms: quantityTerms)
                 guard parsed.key == oldKey else { continue }
-                recipes[recipeIndex].ingredients[ingredientIndex] = .edited(name: newName, quantityText: newQuantity, category: newCategory)
-                categoryOverrides[Self.key(newName)] = newCategory
+                let storedName = shouldUpdateName ? newName : Self.ingredientName(from: ingredient, parsed: parsed)
+                let storedQuantity = shouldUpdateQuantity ? newQuantity : Self.ingredientQuantityText(from: ingredient, parsed: parsed)
+                let storedCategory = shouldUpdateCategory ? newCategory : (ingredient.category ?? categoryOverrides[Self.key(parsed.name)] ?? Self.category(for: parsed.name))
+                recipes[recipeIndex].ingredients[ingredientIndex] = .edited(name: storedName, quantityText: storedQuantity, category: storedCategory)
+                categoryOverrides[Self.key(storedName)] = storedCategory
             }
         }
 
@@ -459,6 +469,25 @@ private final class RecipistaStore: ObservableObject {
             shoppingDone[Self.key(newName)] = true
         }
         save()
+    }
+
+    private static func ingredientName(from ingredient: IngredientValue, parsed: (key: String, name: String, amount: Double?, unit: String, note: String)) -> String {
+        if case .edited(let name, _, _) = ingredient, !name.isEmpty {
+            return name
+        }
+        return parsed.name
+    }
+
+    private static func ingredientQuantityText(from ingredient: IngredientValue, parsed: (key: String, name: String, amount: Double?, unit: String, note: String)) -> String {
+        if case .edited(_, let quantityText, _) = ingredient {
+            return quantityText
+        }
+        let quantityText = parsed.amount.map { amount in
+            ["大さじ", "小さじ"].contains(parsed.unit)
+                ? "\(parsed.unit)\(Self.format(amount))"
+                : "\(Self.format(amount))\(parsed.unit)"
+        } ?? ""
+        return [quantityText, parsed.note].filter { !$0.isEmpty }.joined(separator: " ")
     }
 
     func deleteShoppingItem(key: String) {
@@ -882,12 +911,17 @@ struct ContentView: View {
         TabView {
             NavigationStack {
                 ScrollView {
-                    VStack(alignment: .leading, spacing: 14) {
-                        appHeader
-                        appShoppingList
+                    LazyVStack(alignment: .leading, spacing: 14, pinnedViews: [.sectionHeaders]) {
+                        Section {
+                            appShoppingList
+                        } header: {
+                            appHeader
+                                .padding(.top, 12)
+                                .padding(.bottom, 6)
+                                .background(Color.recipistaBackground)
+                        }
                     }
                     .padding(.horizontal, 16)
-                    .padding(.top, 12)
                     .padding(.bottom, 22)
                 }
                 .background(Color.recipistaBackground.ignoresSafeArea())
@@ -941,12 +975,12 @@ struct ContentView: View {
                 Button {
                     recipeAddMode = .link
                 } label: {
-                    Label("リンクから追加", systemImage: "link")
+                    Label("リンク", systemImage: "link")
                 }
                 Button {
                     recipeAddMode = .manual
                 } label: {
-                    Label("手入力で追加", systemImage: "square.and.pencil")
+                    Label("手入力", systemImage: "square.and.pencil")
                 }
             } label: {
                 Image(systemName: "plus")
@@ -982,7 +1016,7 @@ struct ContentView: View {
     private var shoppingListHeader: some View {
         HStack(alignment: .center, spacing: 8) {
             Text("買い物リスト")
-                .font(.title3.weight(.bold))
+                .font(.title3.weight(.heavy))
                 .foregroundStyle(Color.recipistaGreen)
             Spacer()
             if !store.shoppingItems.isEmpty {
@@ -1021,10 +1055,11 @@ struct ContentView: View {
                 }
                 .font(.caption2.weight(.bold))
                 .buttonStyle(.plain)
-                .foregroundStyle(Color.recipistaGreen)
+                .foregroundStyle(store.doneShoppingItems.isEmpty ? .secondary : Color.recipistaGreen)
+                .disabled(store.doneShoppingItems.isEmpty)
                 .overlay {
                     RoundedRectangle(cornerRadius: 8, style: .continuous)
-                        .stroke(Color.recipistaLine)
+                        .stroke(store.doneShoppingItems.isEmpty ? Color.recipistaLine.opacity(0.6) : Color.recipistaLine)
                 }
             }
         }
@@ -1045,7 +1080,7 @@ struct ContentView: View {
         } else if isEditingShoppingList {
             ShoppingEditListView(store: store)
         } else {
-            VStack(spacing: 0) {
+            LazyVStack(alignment: .leading, spacing: 0, pinnedViews: [.sectionHeaders]) {
                 shoppingGroups(for: store.activeShoppingItems)
 
                 if !store.doneShoppingItems.isEmpty {
@@ -1053,16 +1088,20 @@ struct ContentView: View {
                         .padding(.top, 12)
                         .padding(.bottom, 2)
 
-                    Text("チェック済み")
-                        .font(.headline.weight(.bold))
-                        .foregroundStyle(.secondary)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .padding(.top, 14)
-                        .padding(.bottom, 4)
-                        .overlay(alignment: .top) {
-                            Divider()
+                    Section {
+                        shoppingGroups(for: store.doneShoppingItems)
+                    } header: {
+                        Text("チェック済み")
+                            .font(.title3.weight(.heavy))
+                            .foregroundStyle(.secondary)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .padding(.top, 14)
+                            .padding(.bottom, 4)
+                            .background(Color.recipistaPanel)
+                            .overlay(alignment: .top) {
+                                Divider()
+                            }
                         }
-                    shoppingGroups(for: store.doneShoppingItems)
                 }
             }
         }
@@ -1105,7 +1144,7 @@ struct ContentView: View {
             } header: {
                 Text("文字サイズ")
             } footer: {
-                Text("買い物リストの見やすさに合わせて文字の大きさを選べます。現在は小にしています。")
+                Text("買い物リストの見やすさに合わせて文字の大きさを選べます。")
             }
 
             Section {
@@ -1149,73 +1188,79 @@ struct ContentView: View {
     }
 
     private var savedRecipeSelector: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            HStack(alignment: .top) {
-                VStack(alignment: .leading, spacing: 2) {
-                    Text("保存レシピ")
-                        .font(.title3.weight(.bold))
-                        .foregroundStyle(Color.recipistaGreen)
-                }
-                Spacer()
-                Button {
-                    withAnimation(.snappy) {
-                        store.recipesExpanded.toggle()
-                    }
-                } label: {
-                    Image(systemName: "chevron.right")
-                        .font(.headline.weight(.bold))
-                        .frame(width: 30, height: 30)
-                        .rotationEffect(.degrees(store.recipesExpanded ? 90 : 0))
-                        .animation(.snappy, value: store.recipesExpanded)
-                }
-                .buttonStyle(.plain)
-                .foregroundStyle(Color.recipistaGreen)
-            }
-
-            if store.recipes.isEmpty {
-                Text("まだ保存されたレシピはありません。")
-                    .font(.footnote)
-                    .foregroundStyle(.secondary)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(12)
-                    .overlay {
-                        RoundedRectangle(cornerRadius: 8, style: .continuous)
-                            .stroke(Color.recipistaLine, style: StrokeStyle(lineWidth: 1, dash: [4]))
-                    }
-            } else if store.recipesExpanded {
-                VStack(spacing: 0) {
-                    ForEach(store.recipes) { recipe in
-                        AppRecipeListRow(
-                            recipe: recipe,
-                            isSelected: store.isSelected(recipe),
-                            onToggle: {
-                            store.toggleRecipe(recipe)
-                            },
-                            onMultiplierChange: { value in
-                                store.updateMultiplier(for: recipe, value: value)
-                            },
-                            onDelete: {
-                                store.deleteRecipe(recipe)
-                            }
-                        )
-                        if recipe.id != store.recipes.last?.id { Divider() }
-                    }
-                }
-            } else {
-                ScrollView(.horizontal, showsIndicators: false) {
-                    HStack(spacing: 10) {
-                        ForEach(store.recipes.filter { store.selectedRecipeIds.contains($0.id) }) { recipe in
-                            AppSelectedRecipeChip(
+        LazyVStack(alignment: .leading, spacing: 10, pinnedViews: [.sectionHeaders]) {
+            Section {
+                if store.recipes.isEmpty {
+                    Text("まだ保存されたレシピはありません。")
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(12)
+                        .overlay {
+                            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                                .stroke(Color.recipistaLine, style: StrokeStyle(lineWidth: 1, dash: [4]))
+                        }
+                } else if store.recipesExpanded {
+                    VStack(spacing: 0) {
+                        ForEach(store.recipes) { recipe in
+                            AppRecipeListRow(
                                 recipe: recipe,
-                                onToggle: { store.toggleRecipe(recipe) },
-                                onMultiplierChange: { store.updateMultiplier(for: recipe, value: $0) }
+                                isSelected: store.isSelected(recipe),
+                                onToggle: {
+                                store.toggleRecipe(recipe)
+                                },
+                                onMultiplierChange: { value in
+                                    store.updateMultiplier(for: recipe, value: value)
+                                },
+                                onDelete: {
+                                    store.deleteRecipe(recipe)
+                                }
                             )
+                            if recipe.id != store.recipes.last?.id { Divider() }
                         }
                     }
-                    .padding(.vertical, 4)
+                } else {
+                    ScrollView(.horizontal, showsIndicators: false) {
+                        HStack(spacing: 10) {
+                            ForEach(store.recipes.filter { store.selectedRecipeIds.contains($0.id) }) { recipe in
+                                AppSelectedRecipeChip(
+                                    recipe: recipe,
+                                    onToggle: { store.toggleRecipe(recipe) },
+                                    onMultiplierChange: { store.updateMultiplier(for: recipe, value: $0) }
+                                )
+                            }
+                        }
+                        .padding(.vertical, 4)
+                    }
                 }
+            } header: {
+                savedRecipeHeader
             }
         }
+    }
+
+    private var savedRecipeHeader: some View {
+        HStack(alignment: .top) {
+            Text("保存レシピ")
+                .font(.title3.weight(.heavy))
+                .foregroundStyle(Color.recipistaGreen)
+            Spacer()
+            Button {
+                withAnimation(.snappy) {
+                    store.recipesExpanded.toggle()
+                }
+            } label: {
+                Image(systemName: "chevron.right")
+                    .font(.headline.weight(.bold))
+                    .frame(width: 30, height: 30)
+                    .rotationEffect(.degrees(store.recipesExpanded ? 90 : 0))
+                    .animation(.snappy, value: store.recipesExpanded)
+            }
+            .buttonStyle(.plain)
+            .foregroundStyle(Color.recipistaGreen)
+        }
+        .padding(.vertical, 4)
+        .background(Color.recipistaPanel)
     }
 
     @ViewBuilder
@@ -1247,11 +1292,6 @@ struct ContentView: View {
                 }
                 .padding(.top, 16)
                 .padding(.bottom, 3)
-                .contentShape(Rectangle())
-                .onDrop(of: [UTType.text], isTargeted: nil) { providers in
-                    guard isEditingShoppingList else { return false }
-                    return moveShoppingItem(from: providers, to: category)
-                }
 
                 ForEach(categoryItems) { item in
                     if isEditingShoppingList {
@@ -1260,8 +1300,8 @@ struct ContentView: View {
                             categories: store.availableCategories,
                             textSize: store.textSize,
                             onDelete: { store.deleteShoppingItem(key: item.key) }
-                        ) { updated in
-                            store.updateShoppingItem(updated)
+                        ) { updated, original in
+                            store.updateShoppingItem(updated, original: original)
                         }
                     } else {
                         AppShoppingRow(
@@ -1275,17 +1315,6 @@ struct ContentView: View {
                 }
             }
         }
-    }
-
-    private func moveShoppingItem(from providers: [NSItemProvider], to category: String) -> Bool {
-        guard let provider = providers.first else { return false }
-        provider.loadObject(ofClass: NSString.self) { value, _ in
-            guard let key = value as? String else { return }
-            Task { @MainActor in
-                store.moveShoppingItem(key: key, to: category)
-            }
-        }
-        return true
     }
 
     private var extensionPreview: some View {
@@ -1381,11 +1410,17 @@ private struct CategorySettingsView: View {
                         }
                     }
                 }
+                .onMove { source, destination in
+                    store.moveCategory(from: source, to: destination)
+                }
             }
         }
         .navigationTitle("材料カテゴリー")
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
+            ToolbarItem(placement: .topBarLeading) {
+                EditButton()
+            }
             ToolbarItem(placement: .topBarTrailing) {
                 Button {
                     showingAdd = true
@@ -1764,9 +1799,14 @@ private struct AppRecipeListRow: View {
                     .foregroundStyle(Color.recipistaGreen)
                     .lineLimit(1)
                     .minimumScaleFactor(0.75)
-                    .frame(width: 64, alignment: .trailing)
+                    .monospacedDigit()
+                    .frame(width: 76, alignment: .trailing)
+                    .transaction { transaction in
+                        transaction.animation = nil
+                    }
             }
             .buttonStyle(.plain)
+            .animation(nil, value: recipe.multiplier ?? 1)
 
             Button(action: onDelete) {
                 Image(systemName: "trash")
@@ -1814,6 +1854,7 @@ private struct AppSelectedRecipeChip: View {
                     .foregroundStyle(.white)
                     .minimumScaleFactor(0.65)
                     .lineLimit(1)
+                    .monospacedDigit()
                     .frame(width: 30, height: 20)
                     .background(Color.recipistaGreen.opacity(0.92), in: Capsule())
                     .overlay {
@@ -1821,6 +1862,7 @@ private struct AppSelectedRecipeChip: View {
                     }
             }
             .buttonStyle(.plain)
+            .animation(nil, value: recipe.multiplier ?? 1)
             .offset(x: 1, y: 41)
         }
         .frame(width: 72, height: 72)
@@ -1860,17 +1902,13 @@ private struct ShoppingEditListView: View {
         VStack(spacing: 0) {
             ForEach(store.availableCategories, id: \.self) { category in
                 let items = store.shoppingItems.filter { $0.category == category }
-                if !items.isEmpty || store.shoppingItems.contains(where: { $0.category != category }) {
+                if !items.isEmpty {
                     Text(category)
                         .font(.system(size: store.textSize.categorySize, weight: .bold))
                         .foregroundStyle(Color.recipistaGreen)
                         .frame(maxWidth: .infinity, alignment: .leading)
                         .padding(.top, 16)
                         .padding(.bottom, 3)
-                        .contentShape(Rectangle())
-                        .onDrop(of: [UTType.text], isTargeted: nil) { providers in
-                            moveShoppingItem(from: providers, to: category)
-                        }
 
                     ForEach(items) { item in
                         AppShoppingEditRow(
@@ -1878,8 +1916,8 @@ private struct ShoppingEditListView: View {
                             categories: store.availableCategories,
                             textSize: store.textSize,
                             onDelete: { store.deleteShoppingItem(key: item.key) }
-                        ) { updated in
-                            store.updateShoppingItem(updated)
+                        ) { updated, original in
+                            store.updateShoppingItem(updated, original: original)
                         }
                         Divider()
                     }
@@ -1887,17 +1925,6 @@ private struct ShoppingEditListView: View {
             }
         }
         .background(Color.recipistaPanel)
-    }
-
-    private func moveShoppingItem(from providers: [NSItemProvider], to category: String) -> Bool {
-        guard let provider = providers.first else { return false }
-        provider.loadObject(ofClass: NSString.self) { value, _ in
-            guard let key = value as? String else { return }
-            Task { @MainActor in
-                store.moveShoppingItem(key: key, to: category)
-            }
-        }
-        return true
     }
 }
 
@@ -1928,13 +1955,14 @@ private struct AppShoppingRow: View {
                 .strikethrough(isDone)
                 .frame(width: 76, alignment: .trailing)
 
-            RecipeSourceMenu(sources: item.recipeSources)
+            RecipeSourceMenu(ingredientName: item.name, sources: item.recipeSources)
         }
         .padding(.vertical, 7)
     }
 }
 
 private struct RecipeSourceMenu: View {
+    let ingredientName: String
     let sources: [IngredientRecipeSource]
     @State private var showsSources = false
 
@@ -1955,6 +1983,12 @@ private struct RecipeSourceMenu: View {
         .sheet(isPresented: $showsSources) {
             NavigationStack {
                 List {
+                    Section {
+                        Text(ingredientName)
+                            .font(.headline.weight(.heavy))
+                            .foregroundStyle(Color.recipistaGreen)
+                            .listRowSeparator(.hidden)
+                    }
                     ForEach(sources) { source in
                         HStack(spacing: 10) {
                             RecipeSourceThumb(source: source)
@@ -1979,7 +2013,7 @@ private struct RecipeSourceMenu: View {
                         }
                     }
                 }
-                .navigationTitle("レシピ内訳")
+                .navigationTitle(ingredientName)
                 .navigationBarTitleDisplayMode(.inline)
                 .toolbar {
                     ToolbarItem(placement: .confirmationAction) {
@@ -2024,14 +2058,16 @@ private struct RecipeSourceThumb: View {
 private struct AppShoppingEditRow: View {
     @State private var item: EditingShoppingIngredient
     @State private var currentKey: String
-    let onSave: (EditingShoppingIngredient) -> Void
+    @State private var baselineItem: EditingShoppingIngredient
+    let onSave: (EditingShoppingIngredient, EditingShoppingIngredient) -> Void
     let categories: [String]
     let textSize: AppTextSize
     let onDelete: () -> Void
 
-    init(item: EditingShoppingIngredient, categories: [String], textSize: AppTextSize, onDelete: @escaping () -> Void, onSave: @escaping (EditingShoppingIngredient) -> Void) {
+    init(item: EditingShoppingIngredient, categories: [String], textSize: AppTextSize, onDelete: @escaping () -> Void, onSave: @escaping (EditingShoppingIngredient, EditingShoppingIngredient) -> Void) {
         _item = State(initialValue: item)
         _currentKey = State(initialValue: item.id)
+        _baselineItem = State(initialValue: item)
         self.categories = categories
         self.textSize = textSize
         self.onDelete = onDelete
@@ -2040,14 +2076,6 @@ private struct AppShoppingEditRow: View {
 
     var body: some View {
         HStack(spacing: 8) {
-            Image(systemName: "line.3.horizontal")
-                .font(.caption.weight(.bold))
-                .foregroundStyle(.secondary)
-                .frame(width: 22)
-                .onDrag {
-                    NSItemProvider(object: currentKey as NSString)
-                }
-
             TextField("材料名", text: $item.name)
                 .font(.system(size: textSize.bodySize, weight: .semibold))
                 .textFieldStyle(.plain)
@@ -2084,8 +2112,15 @@ private struct AppShoppingEditRow: View {
             .buttonStyle(.plain)
         }
         .padding(.vertical, 4)
-        .onChange(of: item.category) { _, _ in persist() }
-        .onDisappear { persist() }
+        .onChange(of: item.category) { _, _ in persistIfChanged() }
+        .onDisappear { persistIfChanged() }
+    }
+
+    private func persistIfChanged() {
+        guard item.name != baselineItem.name ||
+                item.quantity != baselineItem.quantity ||
+                item.category != baselineItem.category else { return }
+        persist()
     }
 
     private func persist() {
@@ -2095,7 +2130,9 @@ private struct AppShoppingEditRow: View {
             quantity: item.quantity,
             category: item.category
         )
-        onSave(updated)
+        let original = baselineItem
+        onSave(updated, original)
+        baselineItem = updated
     }
 }
 
@@ -2148,7 +2185,7 @@ private struct LinkRecipeAddView: View {
     var body: some View {
         NavigationStack {
             Form {
-                Section("リンクからレシピを追加") {
+                Section("リンク") {
                     TextField("レシピURLをペースト", text: $store.pastedURL)
                         .textInputAutocapitalization(.never)
                         .keyboardType(.URL)
@@ -2207,7 +2244,7 @@ private struct ManualRecipeAddView: View {
                         .foregroundStyle(.secondary)
                 }
             }
-            .navigationTitle("手入力で追加")
+            .navigationTitle("手入力")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
