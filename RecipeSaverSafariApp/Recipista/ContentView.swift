@@ -986,7 +986,7 @@ struct ContentView: View {
     private var appHeader: some View {
         HStack(alignment: .center) {
             Text("Recipista")
-                .font(.system(size: 39, weight: .heavy, design: .rounded))
+                .font(.system(size: 32, weight: .heavy, design: .rounded))
                 .foregroundStyle(Color.recipistaGreen)
             Spacer()
             Menu {
@@ -1002,7 +1002,7 @@ struct ContentView: View {
                 }
             } label: {
                 Image(systemName: "plus")
-                    .font(.system(size: 27, weight: .semibold))
+                    .font(.system(size: 20, weight: .semibold))
                     .foregroundStyle(Color.recipistaButtonForeground)
                     .frame(width: 56, height: 56)
                     .background(Color.recipistaButtonGreen, in: Circle())
@@ -1054,10 +1054,10 @@ struct ContentView: View {
 
                 VStack(alignment: .leading, spacing: 4) {
                     Text("保存レシピ")
-                        .font(.title2.weight(.heavy))
+                        .font(.title3.weight(.heavy))
                         .foregroundStyle(Color.recipistaGreen)
                     Text("お気に入りのレシピをすぐに確認")
-                        .font(.subheadline.weight(.semibold))
+                        .font(.caption.weight(.semibold))
                         .foregroundStyle(.secondary)
                 }
 
@@ -1070,9 +1070,9 @@ struct ContentView: View {
                 } label: {
                     HStack(spacing: 8) {
                         Text(store.recipesExpanded ? "閉じる" : "すべて見る")
-                            .font(.subheadline.weight(.heavy))
+                            .font(.caption.weight(.heavy))
                         Image(systemName: "chevron.right")
-                            .font(.headline.weight(.bold))
+                            .font(.subheadline.weight(.bold))
                             .rotationEffect(.degrees(store.recipesExpanded ? 90 : 0))
                     }
                     .foregroundStyle(Color.recipistaGreen)
@@ -1097,10 +1097,10 @@ struct ContentView: View {
 
                 VStack(alignment: .leading, spacing: 4) {
                     Text("買い物リスト")
-                        .font(.title2.weight(.heavy))
+                        .font(.title3.weight(.heavy))
                         .foregroundStyle(Color.recipistaGreen)
                     Text("必要な食材をまとめてチェック")
-                        .font(.subheadline.weight(.semibold))
+                        .font(.caption.weight(.semibold))
                         .foregroundStyle(.secondary)
                 }
 
@@ -1109,7 +1109,7 @@ struct ContentView: View {
                 if !store.shoppingItems.isEmpty {
                     ShareLink(item: store.shoppingShareText) {
                         Image(systemName: "square.and.arrow.up")
-                            .font(.system(size: 20, weight: .semibold))
+                            .font(.system(size: 16, weight: .semibold))
                             .frame(width: 46, height: 46)
                     }
                     .buttonStyle(.plain)
@@ -1133,7 +1133,7 @@ struct ContentView: View {
                         .disabled(store.doneShoppingItems.isEmpty)
                     } label: {
                         Image(systemName: "ellipsis")
-                            .font(.system(size: 20, weight: .heavy))
+                            .font(.system(size: 16, weight: .heavy))
                             .frame(width: 46, height: 46)
                     }
                     .buttonStyle(.plain)
@@ -1399,14 +1399,14 @@ struct ContentView: View {
                         HStack(spacing: 12) {
                             CategoryIllustration(category: category)
                             Text(category)
-                                .font(.system(size: store.textSize.categorySize, weight: .heavy))
+                                .font(.system(size: store.textSize.categorySize, weight: .bold))
                                 .foregroundStyle(.primary)
                             Spacer()
                             Text("\(categoryItems.count)件")
-                                .font(.subheadline.weight(.bold))
+                                .font(.caption.weight(.bold))
                                 .foregroundStyle(.secondary)
                             Image(systemName: "chevron.up")
-                                .font(.headline.weight(.bold))
+                                .font(.subheadline.weight(.bold))
                                 .foregroundStyle(Color.recipistaGreen)
                                 .rotationEffect(.degrees(isCollapsed ? 180 : 0))
                         }
@@ -1998,7 +1998,7 @@ private struct CategoryIconBubble: View {
 
     var body: some View {
         Image(systemName: symbol)
-            .font(.system(size: 24, weight: .bold))
+            .font(.system(size: 20, weight: .bold))
             .foregroundStyle(color)
             .frame(width: 58, height: 58)
             .background(color.opacity(0.10), in: Circle())
@@ -2030,7 +2030,7 @@ private struct CategoryIllustration: View {
 
     var body: some View {
         Image(systemName: symbol)
-            .font(.system(size: 27, weight: .bold))
+            .font(.system(size: 22, weight: .bold))
             .foregroundStyle(color)
             .frame(width: 42, height: 42)
     }
@@ -2048,7 +2048,7 @@ private struct AppSelectedRecipeChip: View {
 
                 Button(action: onToggle) {
                     Image(systemName: "checkmark")
-                        .font(.system(size: 18, weight: .black))
+                        .font(.system(size: 14, weight: .black))
                         .foregroundStyle(Color.recipistaButtonForeground)
                         .frame(width: 34, height: 34)
                         .background(Color.recipistaButtonGreen, in: Circle())
@@ -2066,7 +2066,7 @@ private struct AppSelectedRecipeChip: View {
                     }
                 } label: {
                     Text(recipeCompactPortionLabel(recipe))
-                        .font(.system(size: 15, weight: .black))
+                        .font(.system(size: 11, weight: .black))
                         .foregroundStyle(Color.recipistaButtonForeground)
                         .minimumScaleFactor(0.65)
                         .lineLimit(1)
@@ -2085,7 +2085,7 @@ private struct AppSelectedRecipeChip: View {
             .frame(width: 108, height: 104)
 
             Text(recipe.name)
-                .font(.caption.weight(.heavy))
+                .font(.caption2.weight(.semibold))
                 .foregroundStyle(.primary)
                 .lineLimit(2)
                 .frame(width: 108, alignment: .leading)
@@ -2163,7 +2163,7 @@ private struct AppShoppingRow: View {
         HStack(spacing: 12) {
             Button(action: onToggle) {
                 Image(systemName: isDone ? "checkmark.square.fill" : "square")
-                    .font(.system(size: 24, weight: .semibold))
+                    .font(.system(size: 19, weight: .semibold))
                     .foregroundStyle(isDone ? Color.recipistaGreen : Color.recipistaLine)
             }
             .buttonStyle(.plain)
