@@ -437,6 +437,11 @@ private final class RecipistaStore: ObservableObject {
         save()
     }
 
+    func resetQuantityTerms() {
+        quantityTerms = defaultQuantityTerms
+        save()
+    }
+
     func checkAllSeasonings() {
         for item in shoppingItems where item.category == "調味料" {
             shoppingDone[item.key] = true
@@ -983,17 +988,6 @@ struct ContentView: View {
                 .font(.system(size: 32, weight: .heavy, design: .rounded))
                 .foregroundStyle(Color.recipistaGreen)
             Spacer()
-            NavigationLink {
-                CategorySettingsView(store: store)
-            } label: {
-                Image(systemName: "line.3.horizontal.decrease")
-                    .font(.system(size: 17, weight: .bold))
-                    .foregroundStyle(.white)
-                    .frame(width: 34, height: 34)
-                    .background(Color.recipistaGreen, in: Circle())
-            }
-            .buttonStyle(.plain)
-
             Menu {
                 Button {
                     recipeAddMode = .link
@@ -1008,9 +1002,9 @@ struct ContentView: View {
             } label: {
                 Image(systemName: "plus")
                     .font(.system(size: 18, weight: .bold))
-                    .foregroundStyle(.white)
+                    .foregroundStyle(Color.recipistaButtonForeground)
                     .frame(width: 34, height: 34)
-                    .background(Color.recipistaGreen, in: Circle())
+                    .background(Color.recipistaButtonGreen, in: Circle())
             }
         }
         .padding(.top, 2)
@@ -1417,6 +1411,7 @@ struct ContentView: View {
 }
 
 private struct CategorySettingsView: View {
+    @Environment(\.editMode) private var editMode
     @ObservedObject var store: RecipistaStore
     @State private var categoryName = ""
     @State private var showingAdd = false
@@ -1426,6 +1421,12 @@ private struct CategorySettingsView: View {
             Section("登録済み") {
                 ForEach(store.availableCategories, id: \.self) { category in
                     HStack {
+                        if editMode?.wrappedValue.isEditing == true {
+                            Image(systemName: "line.3.horizontal")
+                                .font(.caption.weight(.bold))
+                                .foregroundStyle(.secondary)
+                                .frame(width: 20)
+                        }
                         Text(category)
                         Spacer()
                         if defaultRecipeCategories.contains(category) {
@@ -1450,8 +1451,10 @@ private struct CategorySettingsView: View {
         .navigationTitle("材料カテゴリー")
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
-            ToolbarItemGroup(placement: .topBarTrailing) {
+            ToolbarItem(placement: .topBarLeading) {
                 EditButton()
+            }
+            ToolbarItem(placement: .topBarTrailing) {
                 Button {
                     showingAdd = true
                 } label: {
@@ -1525,17 +1528,18 @@ private struct CategoryOverrideSettingsView: View {
         .navigationTitle("材料分類先")
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
-            ToolbarItem(placement: .topBarLeading) {
-                Button("リセット") {
-                    showingResetConfirmation = true
-                }
-                .foregroundStyle(.red)
-            }
-            ToolbarItem(placement: .topBarTrailing) {
+            ToolbarItemGroup(placement: .topBarTrailing) {
                 Button {
                     showingAdd = true
                 } label: {
                     Image(systemName: "plus")
+                }
+                Menu {
+                    Button("初期値にリセット", role: .destructive) {
+                        showingResetConfirmation = true
+                    }
+                } label: {
+                    Image(systemName: "ellipsis")
                 }
             }
         }
@@ -1591,6 +1595,7 @@ private struct QuantityTermSettingsView: View {
     @ObservedObject var store: RecipistaStore
     @State private var term = ""
     @State private var showingAdd = false
+    @State private var showingResetConfirmation = false
 
     var body: some View {
         Form {
@@ -1608,11 +1613,18 @@ private struct QuantityTermSettingsView: View {
         .navigationTitle("数量単位")
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
-            ToolbarItem(placement: .topBarTrailing) {
+            ToolbarItemGroup(placement: .topBarTrailing) {
                 Button {
                     showingAdd = true
                 } label: {
                     Image(systemName: "plus")
+                }
+                Menu {
+                    Button("初期値にリセット", role: .destructive) {
+                        showingResetConfirmation = true
+                    }
+                } label: {
+                    Image(systemName: "ellipsis")
                 }
             }
         }
@@ -1645,6 +1657,14 @@ private struct QuantityTermSettingsView: View {
                 }
             }
             .presentationDetents([.medium])
+        }
+        .confirmationDialog("数量単位をリセットしますか？", isPresented: $showingResetConfirmation, titleVisibility: .visible) {
+            Button("リセット", role: .destructive) {
+                store.resetQuantityTerms()
+            }
+            Button("キャンセル", role: .cancel) {}
+        } message: {
+            Text("追加した数量単位を標準設定に戻します。保存レシピは削除されません。")
         }
         .scrollContentBackground(.hidden)
         .background(Color.recipistaBackground.ignoresSafeArea())
@@ -1709,10 +1729,10 @@ private struct StartupAdView: View {
                     onClose()
                 }
                 .font(.callout.weight(.bold))
-                .foregroundStyle(.white)
+                .foregroundStyle(Color.recipistaButtonForeground)
                 .frame(maxWidth: .infinity)
                 .padding(.vertical, 12)
-                .background(Color.recipistaGreen, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+                .background(Color.recipistaButtonGreen, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
                 .padding(.horizontal, 24)
                 .padding(.bottom, 22)
             }
@@ -1878,9 +1898,9 @@ private struct AppSelectedRecipeChip: View {
             Button(action: onToggle) {
                 Image(systemName: "checkmark")
                     .font(.caption2.weight(.black))
-                    .foregroundStyle(.white)
+                    .foregroundStyle(Color.recipistaButtonForeground)
                     .frame(width: 22, height: 22)
-                    .background(Color.recipistaGreen, in: Circle())
+                    .background(Color.recipistaButtonGreen, in: Circle())
                     .overlay {
                         Circle().stroke(.white.opacity(0.9), lineWidth: 1.5)
                     }
@@ -1896,12 +1916,12 @@ private struct AppSelectedRecipeChip: View {
             } label: {
                 Text(recipeCompactPortionLabel(recipe))
                     .font(.system(size: 9, weight: .black))
-                    .foregroundStyle(.white)
+                    .foregroundStyle(Color.recipistaButtonForeground)
                     .minimumScaleFactor(0.65)
                     .lineLimit(1)
                     .monospacedDigit()
                     .frame(width: 30, height: 20)
-                    .background(Color.recipistaGreen.opacity(0.92), in: Capsule())
+                    .background(Color.recipistaButtonGreen.opacity(0.92), in: Capsule())
                     .overlay {
                         Capsule().stroke(.white.opacity(0.9), lineWidth: 1.2)
                     }
@@ -2002,7 +2022,7 @@ private struct AppShoppingRow: View {
 
             RecipeSourceMenu(ingredientName: item.name, sources: item.recipeSources)
         }
-        .padding(.vertical, 7)
+        .padding(.vertical, 4)
     }
 }
 
@@ -2027,44 +2047,51 @@ private struct RecipeSourceMenu: View {
         .frame(width: 58, alignment: .trailing)
         .sheet(isPresented: $showsSources) {
             NavigationStack {
-                List {
+                VStack(alignment: .leading, spacing: 8) {
                     Text(ingredientName)
                         .font(.headline.weight(.heavy))
                         .foregroundStyle(Color.recipistaGreen)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .listRowInsets(EdgeInsets(top: 4, leading: 0, bottom: 6, trailing: 0))
-                        .listRowSeparator(.hidden)
-                        .listRowBackground(Color.clear)
+                        .padding(.horizontal, 18)
+                        .padding(.top, 12)
 
-                    ForEach(sources) { source in
-                        HStack(spacing: 10) {
-                            RecipeSourceThumb(source: source)
-                            VStack(alignment: .leading, spacing: 3) {
-                                Text(source.recipeName)
-                                    .font(.subheadline.weight(.semibold))
-                                if let sourceURL = source.sourceURL,
-                                   let url = URL(string: sourceURL),
-                                   source.siteName != "手入力" {
-                                    Link(source.siteName ?? sourceURL, destination: url)
-                                        .font(.caption.weight(.semibold))
-                                        .foregroundStyle(Color.recipistaGreen)
-                                        .underline()
+                    List {
+                        ForEach(sources) { source in
+                            HStack(spacing: 10) {
+                                RecipeSourceThumb(source: source)
+                                VStack(alignment: .leading, spacing: 3) {
+                                    Text(source.recipeName)
+                                        .font(.subheadline.weight(.semibold))
+                                    if let sourceURL = source.sourceURL,
+                                       let url = URL(string: sourceURL),
+                                       source.siteName != "手入力" {
+                                        Link(source.siteName ?? sourceURL, destination: url)
+                                            .font(.caption.weight(.semibold))
+                                            .foregroundStyle(Color.recipistaGreen)
+                                            .underline()
+                                    }
                                 }
-                            }
-                            Spacer()
-                            if !source.quantity.isEmpty {
-                                Text(source.quantity)
-                                    .font(.caption.weight(.bold))
-                                    .foregroundStyle(.secondary)
+                                Spacer()
+                                if !source.quantity.isEmpty {
+                                    Text(source.quantity)
+                                        .font(.caption.weight(.bold))
+                                        .foregroundStyle(.secondary)
+                                }
                             }
                         }
                     }
+                    .scrollContentBackground(.hidden)
+                    .background(Color.clear)
                 }
+                .background(Color.recipistaBackground)
                 .navigationTitle("内訳")
                 .navigationBarTitleDisplayMode(.inline)
                 .toolbar {
                     ToolbarItem(placement: .confirmationAction) {
-                        Button("閉じる") { showsSources = false }
+                        Button {
+                            showsSources = false
+                        } label: {
+                            Image(systemName: "xmark")
+                        }
                     }
                 }
             }
@@ -2749,7 +2776,21 @@ private struct GuideStep: View {
 }
 
 private extension Color {
-    static let recipistaGreen = Color(red: 0.125, green: 0.353, blue: 0.243)
+    static let recipistaButtonGreen = Color(red: 0.125, green: 0.353, blue: 0.243)
+    static let recipistaButtonForeground = Color(
+        UIColor { traits in
+            traits.userInterfaceStyle == .dark
+                ? UIColor(red: 0.055, green: 0.071, blue: 0.061, alpha: 1)
+                : UIColor.white
+        }
+    )
+    static let recipistaGreen = Color(
+        UIColor { traits in
+            traits.userInterfaceStyle == .dark
+                ? UIColor(red: 0.984, green: 0.980, blue: 0.969, alpha: 1)
+                : UIColor(red: 0.125, green: 0.353, blue: 0.243, alpha: 1)
+        }
+    )
     static let recipistaBackground = Color(
         UIColor { traits in
             traits.userInterfaceStyle == .dark
@@ -2761,7 +2802,7 @@ private extension Color {
         UIColor { traits in
             traits.userInterfaceStyle == .dark
                 ? UIColor(red: 0.095, green: 0.110, blue: 0.098, alpha: 1)
-                : UIColor.white
+                : UIColor(red: 0.984, green: 0.980, blue: 0.969, alpha: 1)
         }
     )
     static let recipistaLine = Color(
